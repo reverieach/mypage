@@ -14,6 +14,7 @@ from app.sample_data import (
 from app.services.cache import envelope, read_cached_or_sample
 from app.services.homework import read_due_homework
 from app.services.message_pipeline import (
+    dismiss_mail_message,
     mail_summary,
     microsoft_auth_status,
     notification_center,
@@ -68,6 +69,11 @@ def mail_summary_endpoint() -> dict[str, Any]:
 @router.post("/mail/refresh")
 def mail_refresh_endpoint() -> dict[str, Any]:
     return envelope(refresh_mail(), stale=False)
+
+
+@router.post("/mail/messages/{message_id}/dismiss")
+def mail_dismiss_endpoint(message_id: str) -> dict[str, Any]:
+    return envelope(dismiss_mail_message(message_id), stale=False)
 
 
 @router.get("/mail/microsoft/status")

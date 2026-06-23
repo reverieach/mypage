@@ -1,4 +1,4 @@
-import { ExternalLink, Mail, RefreshCw } from 'lucide-react'
+import { ExternalLink, Mail, RefreshCw, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '../../components/ui/button'
@@ -53,6 +53,11 @@ export function MailDigestWidget({ config }: { config: DataWidgetConfig }) {
     }
   }
 
+  async function dismissMail(id: string) {
+    await postAgentEnvelope(`/api/mail/messages/${encodeURIComponent(id)}/dismiss`)
+    await query.refetch()
+  }
+
   if (query.isLoading) {
     return <WidgetLoading />
   }
@@ -70,7 +75,9 @@ export function MailDigestWidget({ config }: { config: DataWidgetConfig }) {
           <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="truncate">
             {data.configured
-              ? `${data.importantCount} important`
+              ? `${data.importantCount} important${
+                  data.hiddenCount ? ` · ${data.hiddenCount} hidden` : ''
+                }`
               : 'Mail not configured'}
           </span>
         </div>
@@ -102,9 +109,23 @@ export function MailDigestWidget({ config }: { config: DataWidgetConfig }) {
                 <p className="min-w-0 flex-1 truncate text-sm font-medium text-white/84">
                   {item.title}
                 </p>
-                {item.webLink ? (
-                  <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/42" />
-                ) : null}
+                <div className="flex shrink-0 items-center gap-1">
+                  {item.webLink ? (
+                    <ExternalLink className="h-3.5 w-3.5 text-white/42" />
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Hide mail"
+                    className="-mr-1 rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      void dismissMail(item.id)
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
               </div>
               <p className="mt-1 truncate text-xs text-white/48">
                 {item.accountLabel} · {item.accountEmail}

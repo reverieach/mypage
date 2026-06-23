@@ -30,6 +30,58 @@ MAX_BODY_CHARS = int(os.getenv("MAIL_MAX_BODY_CHARS", "6000"))
 DEFAULT_MAX_FETCH = int(os.getenv("MAIL_MAX_FETCH", "20"))
 DEFAULT_SYNC_LOOKBACK_DAYS = int(os.getenv("MAIL_SYNC_LOOKBACK_DAYS", "14"))
 HOMEWORK_MONITOR_PREFIX = "[Homework Monitor]"
+LOW_SIGNAL_CATEGORIES = {"shopping", "promotion", "newsletter", "spam", "marketing"}
+MAIL_VISIBLE_FILTER_SQL = """
+    NOT (
+      LOWER(m.account_email) LIKE '%@qq.com'
+      AND m.title LIKE '[Homework Monitor]%'
+    )
+    AND COALESCE(m.is_read, 0) = 0
+    AND d.message_id IS NULL
+    AND NOT (
+      COALESCE(a.needs_attention, 0) = 0
+      AND (
+        LOWER(COALESCE(a.importance, 'normal')) = 'low'
+        OR LOWER(COALESCE(a.category, 'mail')) IN (
+          'shopping',
+          'promotion',
+          'newsletter',
+          'spam',
+          'marketing'
+        )
+      )
+    )
+    AND NOT (
+      COALESCE(a.needs_attention, 0) = 0
+      AND (
+        LOWER(m.sender) LIKE '%amazon%'
+        OR LOWER(m.sender) LIKE '%store-news%'
+        OR LOWER(m.title) LIKE '%(ad)%'
+        OR LOWER(m.title) LIKE '%newsletter%'
+        OR LOWER(m.title) LIKE '%promotion%'
+        OR LOWER(m.title) LIKE '%discount%'
+        OR LOWER(m.title) LIKE '%deal%'
+        OR LOWER(m.snippet) LIKE '%unsubscribe%'
+        OR LOWER(m.snippet) LIKE '%amazon.cn%'
+        OR m.title LIKE '%促销%'
+        OR m.title LIKE '%折扣%'
+        OR m.title LIKE '%优惠%'
+        OR m.title LIKE '%推荐%'
+        OR m.title LIKE '%限时%'
+        OR m.title LIKE '%免邮%'
+        OR m.title LIKE '%镇店之宝%'
+        OR m.title LIKE '%热卖%'
+        OR m.title LIKE '%特价%'
+        OR m.title LIKE '%好价%'
+        OR m.snippet LIKE '%促销%'
+        OR m.snippet LIKE '%折扣%'
+        OR m.snippet LIKE '%优惠%'
+        OR m.snippet LIKE '%限时%'
+        OR m.snippet LIKE '%免邮%'
+        OR m.snippet LIKE '%镇店之宝%'
+      )
+    )
+"""
 FORWARDED_SOURCE_HEADERS = (
     "to",
     "cc",
@@ -85,6 +137,7 @@ class MessageItem:
     body_text: str
     web_link: str
     raw_ref: str
+    is_read: bool
 
 
 def _connect() -> sqlite3.Connection:
@@ -112,6 +165,7 @@ def ensure_schema() -> None:
               body_hash TEXT NOT NULL,
               web_link TEXT NOT NULL,
               raw_ref TEXT NOT NULL,
+              is_read INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -154,7 +208,35 @@ def ensure_schema() -> None:
               updated_at TEXT NOT NULL,
               PRIMARY KEY (source, account_id, key)
             );
+
+            CREATE TABLE IF NOT EXISTS dismissed_messages (
+              message_id TEXT PRIMARY KEY,
+              dismissed_at TEXT NOT NULL
+            );
             """
+        )
+        _ensure_column(
+            connection,
+            "messages",
+            "is_read",
+            "INTEGER NOT NULL DEFAULT 0",
+        )
+
+
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    definition: str,
+) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table_name})")
+    }
+
+    if column_name not in columns:
+        connection.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
         )
 
 
@@ -442,6 +524,15 @@ def _message_web_link(account: MailAccount, message_id: str) -> str:
     return ""
 
 
+def _is_seen_fetch(fetch_data: list[Any]) -> bool:
+    header_text = " ".join(
+        chunk[0].decode("utf-8", errors="ignore")
+        for chunk in fetch_data
+        if isinstance(chunk, tuple) and isinstance(chunk[0], bytes)
+    )
+    return "\\Seen" in header_text
+
+
 def _parse_graph_time(value: str) -> str:
     if not value:
         return now_iso()
@@ -454,7 +545,13 @@ def _parse_graph_time(value: str) -> str:
     return parsed.astimezone(LOCAL_TZ).isoformat(timespec="seconds")
 
 
-def _parse_mail_message(account: MailAccount, uidvalidity: str, uid: str, raw: bytes) -> MessageItem:
+def _parse_mail_message(
+    account: MailAccount,
+    uidvalidity: str,
+    uid: str,
+    raw: bytes,
+    is_read: bool = False,
+) -> MessageItem:
     message = email.message_from_bytes(raw, policy=default)
     assert isinstance(message, EmailMessage)
 
@@ -482,6 +579,7 @@ def _parse_mail_message(account: MailAccount, uidvalidity: str, uid: str, raw: b
         body_text=body_text,
         web_link=_message_web_link(account, raw_message_id),
         raw_ref=raw_message_id or source_item_id,
+        is_read=is_read,
     )
 
 
@@ -496,11 +594,16 @@ def _save_message(connection: sqlite3.Connection, item: MessageItem) -> bool:
     body_hash = hashlib.sha256(item.body_text.encode("utf-8")).hexdigest()
     now = now_iso()
     existing = connection.execute(
-        "SELECT body_hash FROM messages WHERE id = ?",
+        "SELECT body_hash, is_read FROM messages WHERE id = ?",
         (item.id,),
     ).fetchone()
+    is_read_value = 1 if item.is_read else 0
 
-    if existing and str(existing["body_hash"]) == body_hash:
+    if (
+        existing
+        and str(existing["body_hash"]) == body_hash
+        and int(existing["is_read"] or 0) == is_read_value
+    ):
         return False
 
     connection.execute(
@@ -508,9 +611,9 @@ def _save_message(connection: sqlite3.Connection, item: MessageItem) -> bool:
         INSERT INTO messages (
           id, source, source_item_id, account_id, account_label, account_email,
           title, sender, received_at, snippet, body_hash, web_link, raw_ref,
-          created_at, updated_at
+          is_read, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           account_id = excluded.account_id,
           account_label = excluded.account_label,
@@ -522,6 +625,7 @@ def _save_message(connection: sqlite3.Connection, item: MessageItem) -> bool:
           body_hash = excluded.body_hash,
           web_link = excluded.web_link,
           raw_ref = excluded.raw_ref,
+          is_read = excluded.is_read,
           updated_at = excluded.updated_at
         """,
         (
@@ -538,11 +642,12 @@ def _save_message(connection: sqlite3.Connection, item: MessageItem) -> bool:
             body_hash,
             item.web_link,
             item.raw_ref,
+            is_read_value,
             now,
             now,
         ),
     )
-    return True
+    return not existing or str(existing["body_hash"]) != body_hash
 
 
 def collect_imap_account(account: MailAccount) -> list[MessageItem]:
@@ -569,7 +674,8 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
             last_uid = _get_sync_state(connection, "mail", account.id, "last_uid")
 
         if last_uid and last_uid.isdigit():
-            criteria = f"UID {int(last_uid) + 1}:*"
+            sync_window = max(account.max_fetch * 2, 50)
+            criteria = f"UID {max(1, int(last_uid) - sync_window)}:*"
         else:
             since = (datetime.now(LOCAL_TZ) - timedelta(days=DEFAULT_SYNC_LOOKBACK_DAYS)).strftime("%d-%b-%Y")
             criteria = f"SINCE {since}"
@@ -584,7 +690,7 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
 
         for uid_bytes in uids:
             uid = uid_bytes.decode("ascii")
-            status, fetch_data = client.uid("fetch", uid, "(RFC822)")
+            status, fetch_data = client.uid("fetch", uid, "(FLAGS RFC822)")
 
             if status != "OK":
                 continue
@@ -601,7 +707,13 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
             if not raw_message:
                 continue
 
-            item = _parse_mail_message(account, uidvalidity, uid, raw_message)
+            item = _parse_mail_message(
+                account,
+                uidvalidity,
+                uid,
+                raw_message,
+                is_read=_is_seen_fetch(fetch_data),
+            )
 
             if _is_homework_delivery_message(item):
                 continue
@@ -791,7 +903,7 @@ def collect_microsoft_graph_account(account: MailAccount) -> list[MessageItem]:
     query = urllib.parse.urlencode(
         {
             "$top": str(account.max_fetch),
-            "$select": "id,subject,from,receivedDateTime,bodyPreview,webLink",
+            "$select": "id,subject,from,receivedDateTime,bodyPreview,webLink,isRead",
             "$orderby": "receivedDateTime desc",
         }
     )
@@ -834,6 +946,7 @@ def collect_microsoft_graph_account(account: MailAccount) -> list[MessageItem]:
             body_text=body_preview[:MAX_BODY_CHARS],
             web_link=str(message.get("webLink") or ""),
             raw_ref=graph_id,
+            is_read=bool(message.get("isRead")),
         )
 
         items.append(item)
@@ -857,7 +970,23 @@ def _fallback_analysis(item: MessageItem) -> dict[str, Any]:
         "安全",
         "会议",
     ]
-    low_keywords = ["unsubscribe", "newsletter", "promotion", "折扣", "促销"]
+    low_keywords = [
+        "unsubscribe",
+        "newsletter",
+        "promotion",
+        "discount",
+        "deal",
+        "recommend",
+        "折扣",
+        "促销",
+        "优惠",
+        "推荐",
+        "限时",
+        "满减",
+        "免邮",
+        "广告",
+        "(ad)",
+    ]
     important = any(keyword in text for keyword in important_keywords)
     low = any(keyword in text for keyword in low_keywords)
 
@@ -871,7 +1000,7 @@ def _fallback_analysis(item: MessageItem) -> dict[str, Any]:
     return {
         "importance": importance,
         "needsAttention": important,
-        "category": "mail",
+        "category": "promotion" if low else "mail",
         "summary": item.snippet or item.title,
         "actionItems": [],
         "deadline": None,
@@ -914,7 +1043,13 @@ def analyze_message(item: MessageItem) -> dict[str, Any]:
                     "You classify personal emails for a private local dashboard. "
                     "Return only JSON with keys: importance, needsAttention, category, "
                     "summary, actionItems, deadline, displayReason, notificationTitle. "
-                    "importance must be one of critical, important, normal, low."
+                    "importance must be one of critical, important, normal, low. "
+                    "Use categories such as personal, school, work, security, billing, "
+                    "shopping, promotion, newsletter, spam, or mail. Shopping recommendations, "
+                    "ads, discounts, promotional newsletters, and spam should be category "
+                    "promotion, shopping, newsletter, or spam, importance low, and "
+                    "needsAttention false unless they contain a concrete deadline, bill, "
+                    "security risk, or action requested by a real person."
                 ),
             },
             {
@@ -959,9 +1094,36 @@ def analyze_message(item: MessageItem) -> dict[str, Any]:
     return analysis
 
 
+def dismiss_mail_message(message_id: str) -> dict[str, Any]:
+    ensure_schema()
+    normalized_id = message_id
+
+    if normalized_id.startswith("notification:"):
+        normalized_id = normalized_id.removeprefix("notification:")
+
+    with _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO dismissed_messages (message_id, dismissed_at)
+            VALUES (?, ?)
+            ON CONFLICT(message_id)
+            DO UPDATE SET dismissed_at = excluded.dismissed_at
+            """,
+            (normalized_id, now_iso()),
+        )
+        connection.execute(
+            "DELETE FROM notification_items WHERE source_item_id = ? OR id = ?",
+            (normalized_id, message_id),
+        )
+        connection.commit()
+
+    return {"id": normalized_id, "dismissed": True}
+
+
 def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: dict[str, Any]) -> None:
     importance = str(analysis.get("importance") or "normal").lower()
     needs_attention = bool(analysis.get("needsAttention"))
+    category = str(analysis.get("category") or "mail").lower()
     action_items = analysis.get("actionItems")
 
     if not isinstance(action_items, list):
@@ -991,7 +1153,7 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
             item.id,
             importance,
             1 if needs_attention else 0,
-            str(analysis.get("category") or "mail"),
+            category,
             str(analysis.get("summary") or item.snippet or item.title),
             json.dumps(action_items, ensure_ascii=False),
             analysis.get("deadline"),
@@ -1035,6 +1197,11 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
                 now_iso(),
             ),
         )
+    else:
+        connection.execute(
+            "DELETE FROM notification_items WHERE id = ?",
+            (f"notification:{item.id}",),
+        )
 
 
 def refresh_mail() -> dict[str, Any]:
@@ -1077,6 +1244,13 @@ def refresh_mail() -> dict[str, Any]:
             for item in items:
                 changed = _save_message(connection, item)
 
+                if item.is_read:
+                    connection.execute(
+                        "DELETE FROM notification_items WHERE source_item_id = ? OR id = ?",
+                        (item.id, f"notification:{item.id}"),
+                    )
+                    continue
+
                 if changed:
                     inserted += 1
                     _save_analysis(connection, item, analyze_message(item))
@@ -1112,7 +1286,7 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
 
     with _connect() as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT
               m.id, m.account_label, m.account_email, m.title, m.sender,
               m.received_at, m.snippet, m.web_link,
@@ -1121,15 +1295,36 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
               a.analyzed_at
             FROM messages m
             LEFT JOIN message_analysis a ON a.message_id = m.id
-            WHERE NOT (
-              LOWER(m.account_email) LIKE '%@qq.com'
-              AND m.title LIKE '[Homework Monitor]%'
-            )
+            LEFT JOIN dismissed_messages d ON d.message_id = m.id
+            WHERE {MAIL_VISIBLE_FILTER_SQL}
             ORDER BY m.received_at DESC
             LIMIT ?
             """,
             (limit,),
         ).fetchall()
+        visible_count = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*) AS count
+                FROM messages m
+                LEFT JOIN message_analysis a ON a.message_id = m.id
+                LEFT JOIN dismissed_messages d ON d.message_id = m.id
+                WHERE {MAIL_VISIBLE_FILTER_SQL}
+                """
+            ).fetchone()["count"]
+        )
+        total_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM messages m
+                WHERE NOT (
+                  LOWER(m.account_email) LIKE '%@qq.com'
+                  AND m.title LIKE '[Homework Monitor]%'
+                )
+                """
+            ).fetchone()["count"]
+        )
         sync_rows = connection.execute(
             """
             SELECT account_id, MAX(updated_at) AS updated_at
@@ -1151,6 +1346,7 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
     return {
         "configured": bool(accounts),
         "error": config_error,
+        "hiddenCount": max(0, total_count - visible_count),
         "accounts": [
             {
                 "id": account.id,
@@ -1191,14 +1387,23 @@ def notification_center() -> dict[str, Any]:
     with _connect() as connection:
         rows = connection.execute(
             """
-            SELECT id, source, title, summary, time, unread, importance,
-                   account_label, account_email, web_link
-            FROM notification_items
+            SELECT n.id, n.source, n.source_item_id, n.title, n.summary, n.time,
+                   n.unread, n.importance, n.account_label, n.account_email, n.web_link
+            FROM notification_items n
+            LEFT JOIN messages m ON m.id = n.source_item_id
+            LEFT JOIN dismissed_messages d ON d.message_id = n.source_item_id
             WHERE NOT (
-              LOWER(account_email) LIKE '%@qq.com'
-              AND title LIKE '[Homework Monitor]%'
+              LOWER(n.account_email) LIKE '%@qq.com'
+              AND n.title LIKE '[Homework Monitor]%'
             )
-            ORDER BY time DESC
+            AND (
+              n.source != 'mail'
+              OR (
+                COALESCE(m.is_read, 0) = 0
+                AND d.message_id IS NULL
+              )
+            )
+            ORDER BY n.time DESC
             LIMIT 20
             """
         ).fetchall()
@@ -1206,6 +1411,7 @@ def notification_center() -> dict[str, Any]:
     items = [
         {
             "id": row["id"],
+            "sourceItemId": row["source_item_id"],
             "source": row["source"],
             "title": row["title"],
             "summary": row["summary"],

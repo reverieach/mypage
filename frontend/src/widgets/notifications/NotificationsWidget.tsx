@@ -1,6 +1,7 @@
-import { Bell, GitPullRequest, Mail, MessageCircle, School } from 'lucide-react'
+import { Bell, GitPullRequest, Mail, MessageCircle, School, X } from 'lucide-react'
 
 import type { DataWidgetConfig } from '../../config/types'
+import { postAgentEnvelope } from '../../data/apiClient'
 import {
   type NotificationCenterData,
   useAgentWidget,
@@ -17,6 +18,13 @@ const sourceIcons = {
 
 export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<NotificationCenterData>(config)
+
+  async function dismissMail(messageId: string) {
+    await postAgentEnvelope(
+      `/api/mail/messages/${encodeURIComponent(messageId)}/dismiss`,
+    )
+    await query.refetch()
+  }
 
   if (query.isLoading) {
     return <WidgetLoading />
@@ -62,6 +70,20 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
               </div>
               {item.unread ? (
                 <span className="mt-1 h-2 w-2 rounded-full bg-sky-200" />
+              ) : null}
+              {item.source === 'mail' ? (
+                <button
+                  type="button"
+                  aria-label="Hide mail notification"
+                  className="-mr-1 self-start rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    void dismissMail(item.sourceItemId ?? item.id)
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
               ) : null}
             </a>
           )

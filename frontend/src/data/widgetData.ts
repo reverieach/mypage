@@ -66,6 +66,7 @@ export type ScriptsStatusData = {
 export type NotificationCenterData = {
   items: Array<{
     id: string
+    sourceItemId?: string
     source: 'github' | 'mail' | 'bilibili' | 'school' | 'system'
     title: string
     summary: string
@@ -83,6 +84,7 @@ export type MailSummaryData = {
   configured: boolean
   error?: string | null
   importantCount: number
+  hiddenCount?: number
   accounts: Array<{
     id: string
     label: string
