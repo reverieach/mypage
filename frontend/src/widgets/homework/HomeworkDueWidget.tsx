@@ -38,7 +38,7 @@ export function HomeworkDueWidget({ config }: { config: DataWidgetConfig }) {
         <NotebookTabs className="h-4 w-4" aria-hidden="true" />
         {assignments.length} due · {query.data.data.windowLabel}
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         {assignments.length ? (
           assignments.map((assignment) => (
             <div key={assignment.id} className="rounded-2xl bg-white/10 p-3">
