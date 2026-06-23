@@ -28,6 +28,10 @@ npm run lint
 npm run build
 ```
 
+## Browser Extension
+
+Build `frontend/dist`, then load that folder as an unpacked extension in Chrome or Edge. See `docs/extension.md`.
+
 ## Local Agent
 
 The Agent runs on `127.0.0.1:3217` and provides JSON APIs for dynamic widgets.

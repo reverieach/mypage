@@ -1,7 +1,9 @@
 import { RotateCcw, Settings } from 'lucide-react'
 
 import { Button } from '../../components/ui/button'
+import { Dialog, DialogTrigger } from '../../components/ui/dialog'
 import { useLayoutStore } from '../../store/useLayoutStore'
+import { SettingsPanel } from './SettingsPanel'
 
 export function SettingsButton() {
   const resetLayouts = useLayoutStore((state) => state.resetLayouts)
@@ -17,9 +19,14 @@ export function SettingsButton() {
       >
         <RotateCcw className="h-5 w-5" aria-hidden="true" />
       </Button>
-      <Button aria-label="Settings" size="icon" variant="glass" title="Settings">
-        <Settings className="h-5 w-5" aria-hidden="true" />
-      </Button>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button aria-label="Settings" size="icon" variant="glass" title="Settings">
+            <Settings className="h-5 w-5" aria-hidden="true" />
+          </Button>
+        </DialogTrigger>
+        <SettingsPanel />
+      </Dialog>
     </div>
   )
 }

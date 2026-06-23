@@ -5,7 +5,7 @@ import {
   type ResponsiveLayouts,
 } from 'react-grid-layout/legacy'
 
-import { appConfig } from '../config/appConfig'
+import type { WidgetConfig } from '../config/types'
 import type { GridLayouts } from './defaultLayouts'
 import { useLayoutStore } from '../store/useLayoutStore'
 import { WidgetRenderer } from '../widgets/registry'
@@ -13,7 +13,7 @@ import { WidgetShell } from '../widgets/WidgetShell'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
-export function WidgetGrid() {
+export function WidgetGrid({ widgets }: { widgets: WidgetConfig[] }) {
   const layouts = useLayoutStore((state) => state.layouts)
   const setLayouts = useLayoutStore((state) => state.setLayouts)
 
@@ -32,7 +32,7 @@ export function WidgetGrid() {
       }
       resizeHandles={['se']}
     >
-      {appConfig.widgets.map((widget) => (
+      {widgets.map((widget) => (
         <div key={widget.id}>
           <WidgetShell title={widget.title}>
             <WidgetRenderer config={widget} />
