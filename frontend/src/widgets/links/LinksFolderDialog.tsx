@@ -88,7 +88,7 @@ export function LinksFolderDialog({
                       )}
                     />
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3">
                     {links.map((link) => {
                       const globalIndex = config.links.findIndex(
                         (item) => item.id === link.id,

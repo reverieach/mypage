@@ -7,7 +7,7 @@ import { DraggableLinkTile } from './DraggableLinkTile'
 export function LinksGridWidget({ config }: { config: LinksGridWidgetConfig }) {
   return (
     <div className="scrollbar-none h-full overflow-y-auto">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-3">
         {config.links.map((link, index) => (
           <DraggableLinkTile key={link.id} index={index} link={link} />
         ))}
