@@ -1,5 +1,5 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, X } from 'lucide-react'
 
 import { Button } from '../../components/ui/button'
@@ -23,16 +23,29 @@ export function LinksFolderDialog({
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-transparent" />
-        <DialogPrimitive.Content asChild>
-          <motion.div
-            className="fixed left-1/2 top-1/2 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(920px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[36px] border border-white/20 bg-slate-950/48 p-6 text-white shadow-glass backdrop-blur-2xl focus:outline-none"
-            initial={{ opacity: 0, scale: 0.68, y: 40 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.86, y: 18 }}
-            transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
-          >
+      <DialogPrimitive.Portal forceMount>
+        <AnimatePresence>
+          {open ? (
+            <>
+              <DialogPrimitive.Overlay forceMount asChild>
+                <motion.div
+                  key="links-overlay"
+                  className="fixed inset-0 z-40 bg-transparent"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.16 }}
+                />
+              </DialogPrimitive.Overlay>
+              <DialogPrimitive.Content forceMount asChild>
+                <motion.div
+                  key="links-panel"
+                  className="fixed left-1/2 top-1/2 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(920px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[36px] border border-white/20 bg-slate-950/48 p-6 text-white shadow-glass backdrop-blur-2xl focus:outline-none"
+                  initial={{ opacity: 0, scale: 0.68, y: 40 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.84, y: 24 }}
+                  transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
+                >
           <div className="flex items-start justify-between gap-4">
             <div>
               <DialogPrimitive.Title className="text-2xl font-semibold">
@@ -51,7 +64,7 @@ export function LinksFolderDialog({
             </div>
           </div>
 
-          <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="scrollbar-none mt-6 min-h-0 flex-1 overflow-y-auto">
             <div className="grid gap-5 md:grid-cols-2">
               {Object.entries(groupedLinks).map(([category, links]) => (
                 <section
@@ -95,8 +108,11 @@ export function LinksFolderDialog({
               ))}
             </div>
           </div>
-          </motion.div>
-        </DialogPrimitive.Content>
+                </motion.div>
+              </DialogPrimitive.Content>
+            </>
+          ) : null}
+        </AnimatePresence>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )

@@ -129,6 +129,6 @@ NOTIFICATIONS_CENTER = {
 }
 
 HOMEWORK_DUE = {
-    "windowLabel": "next 2 days",
+    "windowLabel": "0-3d",
     "assignments": [],
 }

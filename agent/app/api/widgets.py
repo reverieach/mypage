@@ -50,7 +50,7 @@ def notifications() -> dict[str, Any]:
 @router.get("/homework/due")
 def homework_due() -> dict[str, Any]:
     try:
-        return envelope(read_due_homework(days=2), stale=False)
+        return envelope(read_due_homework(days=3), stale=False)
     except OSError as exc:
         return envelope(HOMEWORK_DUE, stale=True, error=f"homework read failed: {exc}")
     except ValueError as exc:

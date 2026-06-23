@@ -1,5 +1,5 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
@@ -19,16 +19,29 @@ export function WidgetDetailDialog({
 }: WidgetDetailDialogProps) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-transparent" />
-        <DialogPrimitive.Content asChild>
-          <motion.div
-            className="fixed left-1/2 top-1/2 z-50 flex h-[min(680px,calc(100vh-48px))] w-[min(760px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[36px] border border-white/20 bg-slate-950/50 p-6 text-white shadow-glass backdrop-blur-2xl focus:outline-none"
-            initial={{ opacity: 0, scale: 0.72, y: 32 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.88, y: 16 }}
-            transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
-          >
+      <DialogPrimitive.Portal forceMount>
+        <AnimatePresence>
+          {open ? (
+            <>
+              <DialogPrimitive.Overlay forceMount asChild>
+                <motion.div
+                  key="widget-overlay"
+                  className="fixed inset-0 z-40 bg-transparent"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.16 }}
+                />
+              </DialogPrimitive.Overlay>
+              <DialogPrimitive.Content forceMount asChild>
+                <motion.div
+                  key="widget-panel"
+                  className="fixed left-1/2 top-1/2 z-50 flex h-[min(680px,calc(100vh-48px))] w-[min(760px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[36px] border border-white/20 bg-slate-950/50 p-6 text-white shadow-glass backdrop-blur-2xl focus:outline-none"
+                  initial={{ opacity: 0, scale: 0.72, y: 32 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.86, y: 18 }}
+                  transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
+                >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <DialogPrimitive.Title className="text-2xl font-semibold">
@@ -47,8 +60,11 @@ export function WidgetDetailDialog({
             <div className="min-h-0 flex-1">
               {config ? <WidgetRenderer config={config} /> : null}
             </div>
-          </motion.div>
-        </DialogPrimitive.Content>
+                </motion.div>
+              </DialogPrimitive.Content>
+            </>
+          ) : null}
+        </AnimatePresence>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )

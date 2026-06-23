@@ -69,6 +69,6 @@ def read_due_homework(days: int = 2) -> dict[str, Any]:
     assignments.sort(key=lambda item: item["deadline"])
 
     return {
-        "windowLabel": f"next {days} days",
+        "windowLabel": f"0-{days}d",
         "assignments": assignments,
     }
