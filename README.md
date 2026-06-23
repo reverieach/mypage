@@ -28,9 +28,9 @@ npm run lint
 npm run build
 ```
 
-## Agent Preview
+## Local Agent
 
-The Agent will eventually run on `127.0.0.1:3217` and provide local JSON APIs for dynamic widgets. A minimal FastAPI health endpoint is scaffolded under `agent/`.
+The Agent runs on `127.0.0.1:3217` and provides JSON APIs for dynamic widgets.
 
 ```bash
 cd agent
@@ -38,3 +38,15 @@ python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\uvicorn app.main:app --reload --host 127.0.0.1 --port 3217
 ```
+
+Dynamic widgets read:
+
+```txt
+GET /api/school/today
+GET /api/github/contributions
+GET /api/codex/usage/today
+GET /api/automation/digest
+GET /api/scripts/status
+```
+
+If no cache file exists in `agent/app/data/`, the Agent returns built-in sample data.

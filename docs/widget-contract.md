@@ -51,6 +51,20 @@ Rules:
 - Secrets stay in the Agent environment or local collector scripts.
 - Scheduled collectors write cache files; widgets read through the Agent.
 
+## Cache Files
+
+The Agent looks for these optional cache files in `agent/app/data/`:
+
+```txt
+school_today.json
+github_contributions.json
+codex_usage_today.json
+automation_digest.json
+scripts_status.json
+```
+
+When a cache file is missing, the Agent returns built-in sample data. This keeps the frontend usable while real collectors are being developed.
+
 ## Adding A Widget
 
 1. Create a component under `frontend/src/widgets/<name>/`.

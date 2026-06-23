@@ -1,9 +1,9 @@
 import type { DataWidgetConfig } from '../../config/types'
-
-const heatmapCells = Array.from({ length: 91 }, (_, index) => {
-  const value = (index * 7 + index ** 2) % 5
-  return value
-})
+import {
+  type GitHubContributionsData,
+  useAgentWidget,
+} from '../../data/widgetData'
+import { WidgetError, WidgetLoading, WidgetMeta } from '../WidgetStatus'
 
 const colorByLevel = [
   'bg-white/14',
@@ -18,7 +18,17 @@ export function GitHubHeatmapWidget({
 }: {
   config: DataWidgetConfig
 }) {
-  const total = heatmapCells.reduce((sum, cell) => sum + cell, 0)
+  const query = useAgentWidget<GitHubContributionsData>(config)
+
+  if (query.isLoading) {
+    return <WidgetLoading />
+  }
+
+  if (query.isError || !query.data) {
+    return <WidgetError message="Start the local Agent on 127.0.0.1:3217." />
+  }
+
+  const { data } = query.data
 
   return (
     <div
@@ -26,17 +36,21 @@ export function GitHubHeatmapWidget({
       data-endpoint={config.endpoint}
     >
       <div>
-        <p className="text-3xl font-semibold text-white">{total}</p>
-        <p className="text-sm text-white/58">contributions in the last quarter</p>
+        <p className="text-3xl font-semibold text-white">{data.total}</p>
+        <p className="text-sm text-white/58">
+          contributions in the {data.rangeLabel}
+        </p>
       </div>
       <div className="grid grid-flow-col grid-rows-7 gap-1 overflow-hidden">
-        {heatmapCells.map((level, index) => (
+        {data.days.map((day) => (
           <span
-            key={index}
-            className={`aspect-square rounded-[4px] ${colorByLevel[level]}`}
+            key={day.date}
+            className={`aspect-square rounded-[4px] ${colorByLevel[day.level] ?? colorByLevel[0]}`}
+            title={`${day.date}: ${day.count}`}
           />
         ))}
       </div>
+      <WidgetMeta envelope={query.data} />
     </div>
   )
 }

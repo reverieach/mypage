@@ -42,4 +42,16 @@ GET /api/scripts/status
 
 ## Current Boundary
 
-The first milestone uses mock frontend data. Real Agent-backed fetching comes next, using the same widget config shape already in place.
+Dynamic widgets now read the local Agent through `frontend/src/data/widgetData.ts`. The Agent returns built-in sample data when no cache file exists, so the start page works immediately after the Agent starts.
+
+Collectors can replace sample data by writing JSON files under `agent/app/data/`:
+
+```txt
+school_today.json
+github_contributions.json
+codex_usage_today.json
+automation_digest.json
+scripts_status.json
+```
+
+Each file may contain either a raw data object, or a full Agent envelope with `updatedAt`, `stale`, `error`, and `data`.

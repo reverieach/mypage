@@ -14,3 +14,15 @@ export function resolveAgentUrl(endpoint: string) {
 
   return `${LOCAL_AGENT_BASE_URL}${endpoint}`
 }
+
+export async function fetchAgentEnvelope<T>(
+  endpoint: string,
+): Promise<AgentEnvelope<T>> {
+  const response = await fetch(resolveAgentUrl(endpoint))
+
+  if (!response.ok) {
+    throw new Error(`Agent returned ${response.status}`)
+  }
+
+  return response.json() as Promise<AgentEnvelope<T>>
+}
