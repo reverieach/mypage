@@ -10,6 +10,7 @@ import {
 } from '../../components/ui/dialog'
 import { appConfig } from '../../config/appConfig'
 import { useConfigStore } from '../../store/useConfigStore'
+import { useLayoutStore } from '../../store/useLayoutStore'
 import { cn } from '../../utils/cn'
 
 type SettingsTab = 'wallpaper' | 'links' | 'widgets'
@@ -31,6 +32,16 @@ export function SettingsPanel() {
   const setWallpaper = useConfigStore((state) => state.setWallpaper)
   const showWidget = useConfigStore((state) => state.showWidget)
   const updateLink = useConfigStore((state) => state.updateLink)
+  const appendWidgetLayout = useLayoutStore((state) => state.appendWidgetLayout)
+
+  function handleShowWidget(id: string) {
+    const visibleWidgetIds = appConfig.widgets
+      .map((widget) => widget.id)
+      .filter((widgetId) => !hiddenWidgetIds.includes(widgetId))
+
+    appendWidgetLayout(id, visibleWidgetIds)
+    showWidget(id)
+  }
 
   function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -255,7 +266,7 @@ export function SettingsPanel() {
                     size="sm"
                     variant={hidden ? 'glass' : 'ghost'}
                     onClick={() =>
-                      hidden ? showWidget(widget.id) : hideWidget(widget.id)
+                      hidden ? handleShowWidget(widget.id) : hideWidget(widget.id)
                     }
                   >
                     {hidden ? (

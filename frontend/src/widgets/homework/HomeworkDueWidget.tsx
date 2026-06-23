@@ -1,6 +1,9 @@
-import { Clock3, NotebookTabs } from 'lucide-react'
+import { Clock3, NotebookTabs, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
 
+import { Button } from '../../components/ui/button'
 import type { DataWidgetConfig } from '../../config/types'
+import { postAgentEnvelope } from '../../data/apiClient'
 import { type HomeworkDueData, useAgentWidget } from '../../data/widgetData'
 import { WidgetError, WidgetLoading, WidgetMeta } from '../WidgetStatus'
 
@@ -21,6 +24,18 @@ function formatDeadline(value: string) {
 
 export function HomeworkDueWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<HomeworkDueData>(config)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  async function refreshHomework() {
+    setIsRefreshing(true)
+
+    try {
+      await postAgentEnvelope('/api/homework/refresh')
+      await query.refetch()
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
   if (query.isLoading) {
     return <WidgetLoading />
@@ -34,9 +49,25 @@ export function HomeworkDueWidget({ config }: { config: DataWidgetConfig }) {
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-hidden">
-      <div className="flex items-center gap-2 text-sm font-medium text-white/82">
-        <NotebookTabs className="h-4 w-4" aria-hidden="true" />
-        {assignments.length} due · {query.data.data.windowLabel}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-white/82">
+          <NotebookTabs className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            {assignments.length} due · {query.data.data.windowLabel}
+          </span>
+        </div>
+        <Button
+          aria-label="Refresh homework"
+          size="icon"
+          variant="ghost"
+          onClick={refreshHomework}
+          disabled={isRefreshing}
+        >
+          <RefreshCw
+            className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+            aria-hidden="true"
+          />
+        </Button>
       </div>
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         {assignments.length ? (

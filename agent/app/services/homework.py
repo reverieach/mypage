@@ -1,12 +1,71 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 LOCAL_TZ = timezone(timedelta(hours=8))
-HOMEWORK_DB_PATH = Path("E:/作业获取项目/homework_db.json")
+HOMEWORK_PROJECT_DIR = Path(os.getenv("HOMEWORK_PROJECT_DIR", "E:/作业获取项目"))
+HOMEWORK_DB_PATH = HOMEWORK_PROJECT_DIR / "homework_db.json"
+HOMEWORK_REFRESH_TIMEOUT_SECONDS = int(os.getenv("HOMEWORK_REFRESH_TIMEOUT_SECONDS", "180"))
+SILENT_HOMEWORK_REFRESH_SCRIPT = r"""
+from dataclasses import replace
+
+from capture_headers import capture_valid_headers
+from config import load_settings
+from monitor_core import (
+    AuthExpiredError,
+    _inject_course_names,
+    analyze_assignments,
+    enrich_homework_content,
+    fetch_course_map,
+    fetch_undone_list,
+    load_state,
+    save_state,
+)
+
+
+def run_once():
+    settings = replace(
+        load_settings(),
+        enable_console_notify=False,
+        notify_channels=(),
+    )
+    state = load_state(settings.state_file)
+
+    try:
+        course_map = fetch_course_map(settings)
+    except Exception as exc:
+        print(f"[warn] course map fetch failed, continuing without: {exc}")
+        course_map = {}
+
+    undone_list = fetch_undone_list(settings)
+
+    if course_map:
+        _inject_course_names(undone_list, course_map)
+
+    try:
+        enrich_homework_content(settings, undone_list)
+    except Exception as exc:
+        print(f"[warn] homework content fetch failed, continuing without: {exc}")
+
+    events = analyze_assignments(undone_list, state, settings)
+    save_state(settings.state_file, state)
+    return events
+
+
+try:
+    events = run_once()
+except AuthExpiredError:
+    print("[warn] auth expired, refreshing headers once...")
+    capture_valid_headers()
+    events = run_once()
+
+print(f"[ok] homework data refreshed; suppressed {len(events)} notification event(s).")
+"""
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -72,3 +131,40 @@ def read_due_homework(days: int = 2) -> dict[str, Any]:
         "windowLabel": f"0-{days}d",
         "assignments": assignments,
     }
+
+
+def refresh_due_homework(days: int = 3) -> dict[str, Any]:
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+
+    try:
+        result = subprocess.run(
+            ["python", "-c", SILENT_HOMEWORK_REFRESH_SCRIPT],
+            cwd=HOMEWORK_PROJECT_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=HOMEWORK_REFRESH_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"homework refresh exceeded {HOMEWORK_REFRESH_TIMEOUT_SECONDS}s"
+        ) from exc
+
+    if result.returncode != 0:
+        output = "\n".join(
+            part.strip()
+            for part in (result.stdout, result.stderr)
+            if part.strip()
+        )
+        raise RuntimeError(
+            f"homework refresh failed with exit code {result.returncode}: {output[-600:]}"
+        )
+
+    data = read_due_homework(days=days)
+    data["refreshed"] = True
+    return data

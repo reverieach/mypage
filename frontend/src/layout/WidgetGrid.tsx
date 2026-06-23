@@ -67,6 +67,7 @@ export function WidgetGrid({ widgets }: { widgets: WidgetConfig[] }) {
         rowHeight={72}
         margin={[18, 18]}
         containerPadding={[0, 0]}
+        compactType={null}
         draggableHandle=".widget-drag-handle"
         onLayoutChange={(_layout: Layout, allLayouts: ResponsiveLayouts) =>
           setLayouts(allLayouts as GridLayouts)

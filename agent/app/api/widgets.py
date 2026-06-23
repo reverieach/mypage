@@ -12,7 +12,7 @@ from app.sample_data import (
     SCRIPTS_STATUS,
 )
 from app.services.cache import envelope, read_cached_or_sample
-from app.services.homework import read_due_homework
+from app.services.homework import read_due_homework, refresh_due_homework
 from app.services.message_pipeline import (
     dismiss_mail_message,
     mail_summary,
@@ -102,3 +102,17 @@ def homework_due() -> dict[str, Any]:
         return envelope(HOMEWORK_DUE, stale=True, error=f"homework read failed: {exc}")
     except ValueError as exc:
         return envelope(HOMEWORK_DUE, stale=True, error=f"homework parse failed: {exc}")
+
+
+@router.post("/homework/refresh")
+def homework_refresh() -> dict[str, Any]:
+    try:
+        return envelope(refresh_due_homework(days=3), stale=False)
+    except OSError as exc:
+        return envelope(HOMEWORK_DUE, stale=True, error=f"homework refresh failed: {exc}")
+    except TimeoutError as exc:
+        return envelope(HOMEWORK_DUE, stale=True, error=f"homework refresh timed out: {exc}")
+    except RuntimeError as exc:
+        return envelope(HOMEWORK_DUE, stale=True, error=str(exc))
+    except ValueError as exc:
+        return envelope(HOMEWORK_DUE, stale=True, error=f"homework refresh config failed: {exc}")
