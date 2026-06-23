@@ -1,3 +1,5 @@
+import type { ResponsiveLayouts } from 'react-grid-layout/legacy'
+
 import { appConfig } from '../config/appConfig'
 import type { WidgetLayout } from '../config/types'
 
@@ -5,7 +7,7 @@ export type GridLayoutItem = WidgetLayout & {
   i: string
 }
 
-export type GridLayouts = Record<string, GridLayoutItem[]>
+export type GridLayouts = ResponsiveLayouts<string>
 
 const desktopLayout = appConfig.widgets.map((widget) => ({
   i: widget.id,

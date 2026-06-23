@@ -21,13 +21,13 @@ export function WidgetShell({ title, className, children }: WidgetShellProps) {
         <h2 className="truncate text-sm font-semibold tracking-wide text-white/86">
           {title}
         </h2>
-        <button
-          type="button"
+        <div
           className="widget-drag-handle -mr-1 flex h-7 w-8 cursor-grab items-center justify-center rounded-full text-white/54 transition hover:bg-white/12 hover:text-white active:cursor-grabbing"
           aria-label={`Drag ${title}`}
+          role="presentation"
         >
           <GripHorizontal className="h-4 w-4" aria-hidden="true" />
-        </button>
+        </div>
       </div>
       <div className="min-h-0 flex-1">{children}</div>
     </GlassCard>

@@ -23,7 +23,7 @@ export function CodexUsageWidget({
         <p className="text-3xl font-semibold text-white">156k</p>
         <p className="text-sm text-white/58">tokens today - 8 sessions</p>
       </div>
-      <div className="mt-3 min-h-0 flex-1">
+      <div className="mt-3 min-h-32 flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={usage} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
             <defs>
