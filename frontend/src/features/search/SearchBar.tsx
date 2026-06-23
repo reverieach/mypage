@@ -16,7 +16,7 @@ function buildSearchUrl(rawQuery: string, engine: SearchEngine) {
     return null
   }
 
-  return engine.url.replace('{query}', encodeURIComponent(query))
+  return engine.url.replaceAll('{query}', encodeURIComponent(query))
 }
 
 export function SearchBar({ engines }: SearchBarProps) {
@@ -96,7 +96,7 @@ export function SearchBar({ engines }: SearchBarProps) {
     }
   }, [isMenuOpen])
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!selectedEngine) {
       return
@@ -105,6 +105,14 @@ export function SearchBar({ engines }: SearchBarProps) {
     const url = buildSearchUrl(query, selectedEngine)
 
     if (url) {
+      if (selectedEngine.copyQueryToClipboard) {
+        try {
+          await navigator.clipboard.writeText(query.trim())
+        } catch {
+          // Clipboard is a convenience fallback; navigation should still work.
+        }
+      }
+
       window.location.href = url
     }
   }

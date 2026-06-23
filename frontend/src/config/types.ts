@@ -15,6 +15,7 @@ export type SearchEngine = {
   id: string
   label: string
   url: string
+  copyQueryToClipboard?: boolean
 }
 
 export type QuickLink = {

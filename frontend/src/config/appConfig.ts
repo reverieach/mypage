@@ -28,6 +28,7 @@ export const appConfig: AppConfig = {
       id: 'deepseek',
       label: 'DeepSeek',
       url: 'https://chat.deepseek.com/?q={query}',
+      copyQueryToClipboard: true,
     },
     {
       id: 'google',
