@@ -10,12 +10,14 @@ type DraggableLinkTileProps = {
   link: QuickLink
   index: number
   size?: 'compact' | 'large'
+  fit?: boolean
 }
 
 export function DraggableLinkTile({
   link,
   index,
   size = 'compact',
+  fit = false,
 }: DraggableLinkTileProps) {
   const moveLinkToIndex = useConfigStore((state) => state.moveLinkToIndex)
 
@@ -39,7 +41,9 @@ export function DraggableLinkTile({
       href={link.href}
       className={cn(
         'group relative flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/12 px-2 text-center transition hover:-translate-y-0.5 hover:bg-white/22',
-        size === 'large' ? 'min-h-28 py-4' : 'min-h-24 py-3',
+        fit ? 'h-full min-h-0 py-2' : null,
+        !fit && size === 'large' ? 'min-h-28 py-4' : null,
+        !fit && size === 'compact' ? 'min-h-24 py-3' : null,
       )}
       onDragStart={handleDragStart}
       onDragOver={(event) => event.preventDefault()}
