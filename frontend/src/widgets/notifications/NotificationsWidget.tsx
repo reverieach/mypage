@@ -38,7 +38,7 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
           {query.data.data.enabledSources.join(' · ')}
         </span>
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         {items.map((item) => {
           const Icon = sourceIcons[item.source]
 

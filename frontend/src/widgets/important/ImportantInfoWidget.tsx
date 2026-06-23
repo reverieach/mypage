@@ -7,7 +7,7 @@ export function ImportantInfoWidget() {
         <Pin className="h-4 w-4" aria-hidden="true" />
         Important
       </div>
-      <div className="grid min-h-0 flex-1 gap-2 overflow-y-auto pr-1">
+      <div className="scrollbar-none grid min-h-0 flex-1 gap-2 overflow-y-auto">
         {['校园事务', '待办提醒', '常用号码'].map((item) => (
           <div key={item} className="rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/70">
             {item}

@@ -85,7 +85,7 @@ export function SettingsPanel() {
         })}
       </div>
 
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="scrollbar-none mt-5 min-h-0 flex-1 overflow-y-auto">
         {activeTab === 'wallpaper' ? (
           <div className="space-y-4">
             <div className="overflow-hidden rounded-3xl border border-white/12 bg-white/10">

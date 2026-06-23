@@ -1,7 +1,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-import { defaultLayouts, type GridLayouts } from '../layout/defaultLayouts'
+import {
+  defaultLayouts,
+  normalizeLayouts,
+  type GridLayouts,
+} from '../layout/defaultLayouts'
 
 type LayoutState = {
   layouts: GridLayouts
@@ -13,7 +17,7 @@ export const useLayoutStore = create<LayoutState>()(
   persist(
     (set) => ({
       layouts: defaultLayouts,
-      setLayouts: (layouts) => set({ layouts }),
+      setLayouts: (layouts) => set({ layouts: normalizeLayouts(layouts) }),
       resetLayouts: () => set({ layouts: defaultLayouts }),
     }),
     {

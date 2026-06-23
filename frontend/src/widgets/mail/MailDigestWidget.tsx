@@ -7,7 +7,7 @@ export function MailDigestWidget() {
         <Mail className="h-4 w-4" aria-hidden="true" />
         Mail digest
       </div>
-      <div className="space-y-2 overflow-y-auto pr-1">
+      <div className="scrollbar-none space-y-2 overflow-y-auto">
         {['Inbox summary source not configured', 'Important mail will appear here'].map(
           (item) => (
             <div key={item} className="rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/70">

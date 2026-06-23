@@ -28,3 +28,33 @@ export const defaultLayouts: GridLayouts = {
     w: 6,
   })),
 }
+
+export function normalizeLayouts(layouts: GridLayouts): GridLayouts {
+  const normalized: GridLayouts = {}
+
+  for (const breakpoint of Object.keys(defaultLayouts)) {
+    const defaults = defaultLayouts[breakpoint] ?? []
+    const current = layouts[breakpoint] ?? []
+
+    normalized[breakpoint] = defaults.map((defaultItem) => {
+      const item = current.find((layoutItem) => layoutItem.i === defaultItem.i)
+      const minW = defaultItem.minW ?? 1
+      const minH = defaultItem.minH ?? 1
+
+      if (!item || item.w < minW || item.h < minH) {
+        return defaultItem
+      }
+
+      return {
+        ...defaultItem,
+        ...item,
+        minW: defaultItem.minW,
+        minH: defaultItem.minH,
+        maxW: defaultItem.maxW,
+        maxH: defaultItem.maxH,
+      }
+    })
+  }
+
+  return normalized
+}
