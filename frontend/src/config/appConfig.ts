@@ -5,27 +5,39 @@ export const appConfig: AppConfig = {
   wallpaper: '/wallpapers/default.png',
   searchEngines: [
     {
+      id: 'bing',
+      label: 'Bing',
+      url: 'https://www.bing.com/search?q={query}',
+    },
+    {
+      id: 'github',
+      label: 'GitHub',
+      url: 'https://github.com/search?q={query}&type=repositories',
+    },
+    {
+      id: 'bilibili',
+      label: 'Bilibili',
+      url: 'https://search.bilibili.com/all?keyword={query}',
+    },
+    {
+      id: 'chatgpt',
+      label: 'ChatGPT',
+      url: 'https://chatgpt.com/?q={query}',
+    },
+    {
+      id: 'deepseek',
+      label: 'DeepSeek',
+      url: 'https://chat.deepseek.com/?q={query}',
+    },
+    {
       id: 'google',
       label: 'Google',
       url: 'https://www.google.com/search?q={query}',
     },
     {
-      id: 'github',
-      label: 'GitHub',
-      prefix: 'gh',
-      url: 'https://github.com/search?q={query}&type=repositories',
-    },
-    {
       id: 'npm',
       label: 'npm',
-      prefix: 'npm',
       url: 'https://www.npmjs.com/search?q={query}',
-    },
-    {
-      id: 'bilibili',
-      label: 'Bilibili',
-      prefix: 'b',
-      url: 'https://search.bilibili.com/all?keyword={query}',
     },
   ],
   widgets: [
@@ -35,12 +47,16 @@ export const appConfig: AppConfig = {
       title: 'Links',
       layout: { x: 0, y: 0, w: 4, h: 3, minW: 3, minH: 2 },
       links: [
-        { id: 'github', label: 'GitHub', href: 'https://github.com' },
-        { id: 'gmail', label: 'Gmail', href: 'https://mail.google.com' },
-        { id: 'bilibili', label: 'Bilibili', href: 'https://www.bilibili.com' },
-        { id: 'openai', label: 'OpenAI', href: 'https://chatgpt.com' },
-        { id: 'notion', label: 'Notion', href: 'https://www.notion.so' },
-        { id: 'youtube', label: 'YouTube', href: 'https://www.youtube.com' },
+        { id: 'chatgpt', label: 'ChatGPT', href: 'https://chatgpt.com', category: 'AI' },
+        { id: 'deepseek', label: 'DeepSeek', href: 'https://chat.deepseek.com', category: 'AI' },
+        { id: 'github', label: 'GitHub', href: 'https://github.com', category: 'Dev' },
+        { id: 'vercel', label: 'Vercel', href: 'https://vercel.com', category: 'Dev' },
+        { id: 'mdn', label: 'MDN', href: 'https://developer.mozilla.org', category: 'Dev' },
+        { id: 'bilibili', label: 'Bilibili', href: 'https://www.bilibili.com', category: 'Media' },
+        { id: 'youtube', label: 'YouTube', href: 'https://www.youtube.com', category: 'Media' },
+        { id: 'gmail', label: 'Gmail', href: 'https://mail.google.com', category: 'Tools' },
+        { id: 'notion', label: 'Notion', href: 'https://www.notion.so', category: 'Tools' },
+        { id: 'bing', label: 'Bing', href: 'https://www.bing.com', category: 'Search' },
       ],
     },
     {

@@ -14,7 +14,6 @@ export type WidgetLayout = {
 export type SearchEngine = {
   id: string
   label: string
-  prefix?: string
   url: string
 }
 
@@ -22,6 +21,7 @@ export type QuickLink = {
   id: string
   label: string
   href: string
+  category?: string
   icon?: string
 }
 

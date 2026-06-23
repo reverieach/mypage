@@ -1,12 +1,4 @@
-import {
-  Download,
-  Image,
-  LinkIcon,
-  Plus,
-  RotateCcw,
-  Trash2,
-  Upload,
-} from 'lucide-react'
+import { Download, Image, LinkIcon, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
@@ -23,13 +15,6 @@ import {
 import { cn } from '../../utils/cn'
 
 type SettingsTab = 'wallpaper' | 'links' | 'config'
-
-const wallpaperPresets = [
-  {
-    label: 'Lake',
-    value: '/wallpapers/default.png',
-  },
-]
 
 function safeParseConfig(value: string): Partial<UserConfigSnapshot> | null {
   try {
@@ -50,12 +35,16 @@ export function SettingsPanel() {
   const [importValue, setImportValue] = useState('')
   const [wallpaperDraft, setWallpaperDraft] = useState('')
   const wallpaper = useConfigStore((state) => state.wallpaper)
+  const wallpapers = useConfigStore((state) => state.wallpapers)
   const links = useConfigStore((state) => state.links)
   const addLink = useConfigStore((state) => state.addLink)
+  const addWallpaper = useConfigStore((state) => state.addWallpaper)
   const importSnapshot = useConfigStore((state) => state.importSnapshot)
   const removeLink = useConfigStore((state) => state.removeLink)
+  const removeWallpaper = useConfigStore((state) => state.removeWallpaper)
   const resetAll = useConfigStore((state) => state.resetAll)
   const resetLinks = useConfigStore((state) => state.resetLinks)
+  const resetWallpapers = useConfigStore((state) => state.resetWallpapers)
   const setWallpaper = useConfigStore((state) => state.setWallpaper)
   const updateLink = useConfigStore((state) => state.updateLink)
   const exportedConfig = useMemo(
@@ -63,12 +52,13 @@ export function SettingsPanel() {
       JSON.stringify(
         {
           wallpaper,
+          wallpapers,
           links,
         } satisfies UserConfigSnapshot,
         null,
         2,
       ),
-    [links, wallpaper],
+    [links, wallpaper, wallpapers],
   )
 
   function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
@@ -81,7 +71,10 @@ export function SettingsPanel() {
     const reader = new FileReader()
     reader.addEventListener('load', () => {
       if (typeof reader.result === 'string') {
-        setWallpaper(reader.result)
+        addWallpaper({
+          label: file.name.replace(/\.[^.]+$/, '') || 'Wallpaper',
+          src: reader.result,
+        })
       }
     })
     reader.readAsDataURL(file)
@@ -143,23 +136,40 @@ export function SettingsPanel() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {wallpaperPresets.map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  className="overflow-hidden rounded-2xl border border-white/12 bg-white/10 text-left transition hover:bg-white/16"
-                  onClick={() => setWallpaper(preset.value)}
+              {wallpapers.map((item) => (
+                <div
+                  key={item.id}
+                  className="overflow-hidden rounded-2xl border border-white/12 bg-white/10"
                 >
-                  <img
-                    src={preset.value}
-                    alt=""
-                    className="aspect-video w-full object-cover"
-                    draggable={false}
-                  />
-                  <span className="block px-3 py-2 text-xs font-medium text-white/72">
-                    {preset.label}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    className="block w-full text-left transition hover:opacity-90"
+                    onClick={() => setWallpaper(item.src)}
+                  >
+                    <img
+                      src={item.src}
+                      alt=""
+                      className="aspect-video w-full object-cover"
+                      draggable={false}
+                    />
+                    <span className="block truncate px-3 py-2 text-xs font-medium text-white/72">
+                      {item.label}
+                    </span>
+                  </button>
+                  <div className="flex items-center justify-between border-t border-white/10 px-2 py-1">
+                    <span className="text-[11px] text-white/38">
+                      {item.src === wallpaper ? 'Active' : 'Saved'}
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-full p-1 text-white/42 transition hover:bg-white/10 hover:text-white"
+                      onClick={() => removeWallpaper(item.id)}
+                      aria-label={`Remove ${item.label}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
 
@@ -178,7 +188,10 @@ export function SettingsPanel() {
                   size="sm"
                   onClick={() => {
                     if (wallpaperDraft.trim()) {
-                      setWallpaper(wallpaperDraft.trim())
+                      addWallpaper({
+                        label: 'Custom',
+                        src: wallpaperDraft.trim(),
+                      })
                       setWallpaperDraft('')
                     }
                   }}
@@ -198,6 +211,11 @@ export function SettingsPanel() {
                 onChange={handleWallpaperFile}
               />
             </label>
+
+            <Button variant="ghost" onClick={resetWallpapers}>
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Reset wallpapers
+            </Button>
           </div>
         ) : null}
 
@@ -212,7 +230,7 @@ export function SettingsPanel() {
                   <RotateCcw className="h-4 w-4" aria-hidden="true" />
                   Reset
                 </Button>
-                <Button size="sm" onClick={addLink}>
+                <Button size="sm" onClick={() => addLink()}>
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   Add
                 </Button>
