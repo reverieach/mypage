@@ -26,3 +26,17 @@ export async function fetchAgentEnvelope<T>(
 
   return response.json() as Promise<AgentEnvelope<T>>
 }
+
+export async function postAgentEnvelope<T>(
+  endpoint: string,
+): Promise<AgentEnvelope<T>> {
+  const response = await fetch(resolveAgentUrl(endpoint), {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Agent returned ${response.status}`)
+  }
+
+  return response.json() as Promise<AgentEnvelope<T>>
+}

@@ -71,7 +71,7 @@ export function WidgetRenderer({ config }: { config: WidgetConfig }) {
     }
     case 'mail.digest': {
       const Component = widgetRegistry['mail.digest']
-      return <Component />
+      return <Component config={config} />
     }
     case 'important.info': {
       const Component = widgetRegistry['important.info']

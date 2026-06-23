@@ -13,6 +13,11 @@ from app.sample_data import (
 )
 from app.services.cache import envelope, read_cached_or_sample
 from app.services.homework import read_due_homework
+from app.services.message_pipeline import (
+    mail_summary,
+    notification_center,
+    refresh_mail,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -44,7 +49,22 @@ def scripts_status() -> dict[str, Any]:
 
 @router.get("/notifications")
 def notifications() -> dict[str, Any]:
+    data = notification_center()
+
+    if data["items"]:
+        return envelope(data, stale=False)
+
     return read_cached_or_sample("notifications.json", NOTIFICATIONS_CENTER)
+
+
+@router.get("/mail/summary")
+def mail_summary_endpoint() -> dict[str, Any]:
+    return envelope(mail_summary(), stale=False)
+
+
+@router.post("/mail/refresh")
+def mail_refresh_endpoint() -> dict[str, Any]:
+    return envelope(refresh_mail(), stale=False)
 
 
 @router.get("/homework/due")

@@ -70,9 +70,43 @@ export type NotificationCenterData = {
     title: string
     summary: string
     time: string
+    importance?: 'critical' | 'important' | 'normal' | 'low'
+    accountLabel?: string | null
+    accountEmail?: string | null
+    webLink?: string | null
     unread?: boolean
   }>
   enabledSources: string[]
+}
+
+export type MailSummaryData = {
+  configured: boolean
+  error?: string | null
+  importantCount: number
+  accounts: Array<{
+    id: string
+    label: string
+    email: string
+    lastSyncAt?: string | null
+  }>
+  items: Array<{
+    id: string
+    accountLabel: string
+    accountEmail: string
+    title: string
+    sender: string
+    receivedAt: string
+    snippet: string
+    summary: string
+    importance: 'critical' | 'important' | 'normal' | 'low'
+    needsAttention: boolean
+    category: string
+    actionItems: string[]
+    deadline?: string | null
+    displayReason: string
+    webLink?: string | null
+    analyzedAt?: string | null
+  }>
 }
 
 export type HomeworkDueData = {

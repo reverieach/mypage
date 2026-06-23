@@ -128,6 +128,8 @@ export const appConfig: AppConfig = {
       type: 'mail.digest',
       title: 'Mail',
       layout: { x: 3, y: 9, w: 4, h: 3, minW: 3, minH: 2 },
+      endpoint: '/api/mail/summary',
+      refreshIntervalMs: 15 * 60 * 1000,
     },
     {
       id: 'important-info',

@@ -16,4 +16,5 @@ frontend/dist/
 frontend/.vite/
 frontend/node_modules/.tmp/
 agent/app/data/*.json
+agent/app/data/*.sqlite3
 !agent/app/data/.gitkeep

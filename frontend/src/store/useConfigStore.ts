@@ -58,7 +58,7 @@ export const defaultUserConfig: UserConfigSnapshot = {
   wallpaper: appConfig.wallpaper,
   wallpapers: defaultWallpapers,
   links: defaultLinks,
-  hiddenWidgetIds: ['sticky-note', 'weather', 'mail-digest', 'important-info'],
+  hiddenWidgetIds: ['sticky-note', 'weather', 'important-info'],
 }
 
 export const useConfigStore = create<ConfigState>()(

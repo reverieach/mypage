@@ -1,0 +1,27 @@
+[
+  {
+    "id": "gmail-main",
+    "label": "Gmail",
+    "email": "you@gmail.com",
+    "host": "imap.gmail.com",
+    "port": 993,
+    "username": "you@gmail.com",
+    "passwordEnv": "GMAIL_APP_PASSWORD",
+    "folder": "INBOX",
+    "useSsl": true,
+    "maxFetch": 20,
+    "webSearchUrl": "https://mail.google.com/mail/u/0/#search/rfc822msgid:{messageId}"
+  },
+  {
+    "id": "school",
+    "label": "School Mail",
+    "email": "you@example.edu",
+    "host": "imap.example.edu",
+    "port": 993,
+    "username": "you@example.edu",
+    "passwordEnv": "SCHOOL_MAIL_APP_PASSWORD",
+    "folder": "INBOX",
+    "useSsl": true,
+    "maxFetch": 20
+  }
+]

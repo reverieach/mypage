@@ -43,8 +43,11 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
           const Icon = sourceIcons[item.source]
 
           return (
-            <div
+            <a
               key={item.id}
+              href={item.webLink ?? undefined}
+              target={item.webLink ? '_blank' : undefined}
+              rel={item.webLink ? 'noreferrer' : undefined}
               className="flex gap-3 rounded-2xl bg-white/10 px-3 py-2.5"
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0 text-white/68" />
@@ -52,12 +55,15 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
                 <p className="truncate text-sm font-medium text-white/84">
                   {item.title}
                 </p>
-                <p className="truncate text-xs text-white/52">{item.summary}</p>
+                <p className="truncate text-xs text-white/52">
+                  {item.accountEmail ? `${item.accountEmail} · ` : null}
+                  {item.summary}
+                </p>
               </div>
               {item.unread ? (
                 <span className="mt-1 h-2 w-2 rounded-full bg-sky-200" />
               ) : null}
-            </div>
+            </a>
           )
         })}
       </div>
