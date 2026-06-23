@@ -34,11 +34,6 @@ export const appConfig: AppConfig = {
       label: 'Google',
       url: 'https://www.google.com/search?q={query}',
     },
-    {
-      id: 'npm',
-      label: 'npm',
-      url: 'https://www.npmjs.com/search?q={query}',
-    },
   ],
   widgets: [
     {
@@ -98,6 +93,46 @@ export const appConfig: AppConfig = {
       layout: { x: 9, y: 3, w: 3, h: 3, minW: 3, minH: 2 },
       endpoint: '/api/scripts/status',
       refreshIntervalMs: 30 * 1000,
+    },
+    {
+      id: 'notifications',
+      type: 'notifications.center',
+      title: 'Notifications',
+      layout: { x: 0, y: 6, w: 4, h: 3, minW: 3, minH: 2 },
+      endpoint: '/api/notifications',
+      refreshIntervalMs: 2 * 60 * 1000,
+    },
+    {
+      id: 'homework-due',
+      type: 'homework.due',
+      title: 'Homework',
+      layout: { x: 4, y: 6, w: 4, h: 3, minW: 3, minH: 2 },
+      endpoint: '/api/homework/due',
+      refreshIntervalMs: 10 * 60 * 1000,
+    },
+    {
+      id: 'sticky-note',
+      type: 'notes.sticky',
+      title: 'Note',
+      layout: { x: 8, y: 6, w: 4, h: 3, minW: 3, minH: 2 },
+    },
+    {
+      id: 'weather',
+      type: 'weather.summary',
+      title: 'Weather',
+      layout: { x: 0, y: 9, w: 3, h: 3, minW: 3, minH: 2 },
+    },
+    {
+      id: 'mail-digest',
+      type: 'mail.digest',
+      title: 'Mail',
+      layout: { x: 3, y: 9, w: 4, h: 3, minW: 3, minH: 2 },
+    },
+    {
+      id: 'important-info',
+      type: 'important.info',
+      title: 'Important',
+      layout: { x: 7, y: 9, w: 5, h: 3, minW: 3, minH: 2 },
     },
   ],
 }

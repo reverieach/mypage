@@ -11,6 +11,7 @@ export type UserConfigSnapshot = {
   wallpaper: string
   wallpapers: SavedWallpaper[]
   links: QuickLink[]
+  hiddenWidgetIds: string[]
 }
 
 export type SavedWallpaper = {
@@ -22,13 +23,16 @@ export type SavedWallpaper = {
 type ConfigState = UserConfigSnapshot & {
   addLink: (link?: Partial<QuickLink>) => void
   addWallpaper: (wallpaper: Omit<SavedWallpaper, 'id'>) => void
+  hideWidget: (id: string) => void
   importSnapshot: (snapshot: Partial<UserConfigSnapshot>) => void
   moveLink: (id: string, direction: -1 | 1) => void
+  moveLinkToIndex: (id: string, targetIndex: number) => void
   removeWallpaper: (id: string) => void
   removeLink: (id: string) => void
   resetAll: () => void
   resetLinks: () => void
   resetWallpapers: () => void
+  showWidget: (id: string) => void
   setLinks: (links: QuickLink[]) => void
   setWallpaper: (wallpaper: string) => void
   updateLink: (id: string, patch: Partial<QuickLink>) => void
@@ -54,6 +58,7 @@ export const defaultUserConfig: UserConfigSnapshot = {
   wallpaper: appConfig.wallpaper,
   wallpapers: defaultWallpapers,
   links: defaultLinks,
+  hiddenWidgetIds: ['sticky-note', 'weather', 'mail-digest', 'important-info'],
 }
 
 export const useConfigStore = create<ConfigState>()(
@@ -95,6 +100,12 @@ export const useConfigStore = create<ConfigState>()(
             wallpapers: [...state.wallpapers, nextWallpaper],
           }
         }),
+      hideWidget: (id) =>
+        set((state) => ({
+          hiddenWidgetIds: state.hiddenWidgetIds.includes(id)
+            ? state.hiddenWidgetIds
+            : [...state.hiddenWidgetIds, id],
+        })),
       importSnapshot: (snapshot) =>
         set((state) => ({
           wallpaper:
@@ -105,11 +116,28 @@ export const useConfigStore = create<ConfigState>()(
             ? snapshot.wallpapers
             : state.wallpapers,
           links: Array.isArray(snapshot.links) ? snapshot.links : state.links,
+          hiddenWidgetIds: Array.isArray(snapshot.hiddenWidgetIds)
+            ? snapshot.hiddenWidgetIds
+            : state.hiddenWidgetIds,
         })),
       moveLink: (id, direction) =>
         set((state) => {
           const index = state.links.findIndex((link) => link.id === id)
           const targetIndex = index + direction
+
+          if (index < 0 || targetIndex < 0 || targetIndex >= state.links.length) {
+            return state
+          }
+
+          const links = [...state.links]
+          const [link] = links.splice(index, 1)
+          links.splice(targetIndex, 0, link)
+
+          return { links }
+        }),
+      moveLinkToIndex: (id, targetIndex) =>
+        set((state) => {
+          const index = state.links.findIndex((link) => link.id === id)
 
           if (index < 0 || targetIndex < 0 || targetIndex >= state.links.length) {
             return state
@@ -144,6 +172,10 @@ export const useConfigStore = create<ConfigState>()(
           wallpaper: appConfig.wallpaper,
           wallpapers: defaultWallpapers,
         }),
+      showWidget: (id) =>
+        set((state) => ({
+          hiddenWidgetIds: state.hiddenWidgetIds.filter((widgetId) => widgetId !== id),
+        })),
       setLinks: (links) => set({ links }),
       setWallpaper: (wallpaper) => set({ wallpaper }),
       updateLink: (id, patch) =>
@@ -159,6 +191,7 @@ export const useConfigStore = create<ConfigState>()(
         wallpaper: state.wallpaper,
         wallpapers: state.wallpapers,
         links: state.links,
+        hiddenWidgetIds: state.hiddenWidgetIds,
       }),
     },
   ),
@@ -168,13 +201,15 @@ export function createEffectiveConfig(snapshot: UserConfigSnapshot): AppConfig {
   return {
     ...appConfig,
     wallpaper: snapshot.wallpaper || appConfig.wallpaper,
-    widgets: appConfig.widgets.map((widget) =>
-      widget.type === 'links.grid'
-        ? {
-            ...widget,
-            links: snapshot.links,
-          }
-        : widget,
-    ),
+    widgets: appConfig.widgets
+      .filter((widget) => !snapshot.hiddenWidgetIds.includes(widget.id))
+      .map((widget) =>
+        widget.type === 'links.grid'
+          ? {
+              ...widget,
+              links: snapshot.links,
+            }
+          : widget,
+      ),
   }
 }

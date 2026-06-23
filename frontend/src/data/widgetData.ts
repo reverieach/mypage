@@ -63,6 +63,29 @@ export type ScriptsStatusData = {
   }>
 }
 
+export type NotificationCenterData = {
+  items: Array<{
+    id: string
+    source: 'github' | 'mail' | 'bilibili' | 'school' | 'system'
+    title: string
+    summary: string
+    time: string
+    unread?: boolean
+  }>
+  enabledSources: string[]
+}
+
+export type HomeworkDueData = {
+  windowLabel: string
+  assignments: Array<{
+    id: string
+    name: string
+    course: string
+    deadline: string
+    content?: string
+  }>
+}
+
 export function useAgentWidget<T>(config: DataWidgetConfig) {
   return useQuery({
     queryKey: ['agent-widget', config.id, config.endpoint],

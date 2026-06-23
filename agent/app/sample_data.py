@@ -97,3 +97,38 @@ SCRIPTS_STATUS = {
         },
     ],
 }
+
+NOTIFICATIONS_CENTER = {
+    "enabledSources": ["github", "mail", "bilibili", "school"],
+    "items": [
+        {
+            "id": "github-issue-placeholder",
+            "source": "github",
+            "title": "GitHub issues",
+            "summary": "Connect a repository token or cached issue export.",
+            "time": "now",
+            "unread": True,
+        },
+        {
+            "id": "mail-placeholder",
+            "source": "mail",
+            "title": "Mail digest",
+            "summary": "Daily summaries can be written into Agent cache.",
+            "time": "now",
+            "unread": False,
+        },
+        {
+            "id": "bilibili-placeholder",
+            "source": "bilibili",
+            "title": "Bilibili messages",
+            "summary": "Private messages need a later connector or script.",
+            "time": "now",
+            "unread": False,
+        },
+    ],
+}
+
+HOMEWORK_DUE = {
+    "windowLabel": "next 2 days",
+    "assignments": [],
+}

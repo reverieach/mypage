@@ -1,5 +1,5 @@
-import { Download, Image, LinkIcon, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Eye, EyeOff, Image, LayoutGrid, LinkIcon, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 
 import { Button } from '../../components/ui/button'
@@ -8,58 +8,29 @@ import {
   DialogDescription,
   DialogTitle,
 } from '../../components/ui/dialog'
-import {
-  type UserConfigSnapshot,
-  useConfigStore,
-} from '../../store/useConfigStore'
+import { appConfig } from '../../config/appConfig'
+import { useConfigStore } from '../../store/useConfigStore'
 import { cn } from '../../utils/cn'
 
-type SettingsTab = 'wallpaper' | 'links' | 'config'
-
-function safeParseConfig(value: string): Partial<UserConfigSnapshot> | null {
-  try {
-    const parsed = JSON.parse(value) as Partial<UserConfigSnapshot>
-
-    if (!parsed || typeof parsed !== 'object') {
-      return null
-    }
-
-    return parsed
-  } catch {
-    return null
-  }
-}
+type SettingsTab = 'wallpaper' | 'links' | 'widgets'
 
 export function SettingsPanel() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('wallpaper')
-  const [importValue, setImportValue] = useState('')
   const [wallpaperDraft, setWallpaperDraft] = useState('')
   const wallpaper = useConfigStore((state) => state.wallpaper)
   const wallpapers = useConfigStore((state) => state.wallpapers)
   const links = useConfigStore((state) => state.links)
+  const hiddenWidgetIds = useConfigStore((state) => state.hiddenWidgetIds)
   const addLink = useConfigStore((state) => state.addLink)
   const addWallpaper = useConfigStore((state) => state.addWallpaper)
-  const importSnapshot = useConfigStore((state) => state.importSnapshot)
+  const hideWidget = useConfigStore((state) => state.hideWidget)
   const removeLink = useConfigStore((state) => state.removeLink)
   const removeWallpaper = useConfigStore((state) => state.removeWallpaper)
-  const resetAll = useConfigStore((state) => state.resetAll)
   const resetLinks = useConfigStore((state) => state.resetLinks)
   const resetWallpapers = useConfigStore((state) => state.resetWallpapers)
   const setWallpaper = useConfigStore((state) => state.setWallpaper)
+  const showWidget = useConfigStore((state) => state.showWidget)
   const updateLink = useConfigStore((state) => state.updateLink)
-  const exportedConfig = useMemo(
-    () =>
-      JSON.stringify(
-        {
-          wallpaper,
-          wallpapers,
-          links,
-        } satisfies UserConfigSnapshot,
-        null,
-        2,
-      ),
-    [links, wallpaper, wallpapers],
-  )
 
   function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -80,15 +51,6 @@ export function SettingsPanel() {
     reader.readAsDataURL(file)
   }
 
-  function handleImport() {
-    const parsed = safeParseConfig(importValue)
-
-    if (parsed) {
-      importSnapshot(parsed)
-      setImportValue('')
-    }
-  }
-
   return (
     <DialogContent>
       <div className="pr-12">
@@ -102,7 +64,7 @@ export function SettingsPanel() {
         {[
           { id: 'wallpaper', label: 'Wallpaper', icon: Image },
           { id: 'links', label: 'Links', icon: LinkIcon },
-          { id: 'config', label: 'Config', icon: Upload },
+          { id: 'widgets', label: 'Widgets', icon: LayoutGrid },
         ].map((tab) => {
           const Icon = tab.icon
 
@@ -271,63 +233,41 @@ export function SettingsPanel() {
           </div>
         ) : null}
 
-        {activeTab === 'config' ? (
-          <div className="space-y-4">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-white/62">Export</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => navigator.clipboard.writeText(exportedConfig)}
+        {activeTab === 'widgets' ? (
+          <div className="space-y-3">
+            {appConfig.widgets.map((widget) => {
+              const hidden = hiddenWidgetIds.includes(widget.id)
+
+              return (
+                <div
+                  key={widget.id}
+                  className="flex items-center justify-between gap-3 rounded-3xl border border-white/12 bg-white/10 p-3"
                 >
-                  <Download className="h-4 w-4" aria-hidden="true" />
-                  Copy
-                </Button>
-              </div>
-              <textarea
-                readOnly
-                value={exportedConfig}
-                className="h-40 w-full resize-none rounded-3xl border border-white/12 bg-white/10 p-4 font-mono text-xs leading-5 text-white/70 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <span className="mb-2 block text-xs font-medium text-white/62">
-                Import
-              </span>
-              <textarea
-                value={importValue}
-                onChange={(event) => setImportValue(event.target.value)}
-                className="h-32 w-full resize-none rounded-3xl border border-white/12 bg-white/10 p-4 font-mono text-xs leading-5 text-white/70 focus:outline-none focus:ring-2 focus:ring-white/30"
-              />
-              <div className="mt-3 flex justify-between gap-2">
-                <Button variant="ghost" onClick={() => setImportValue('')}>
-                  Clear
-                </Button>
-                <Button onClick={handleImport}>
-                  <Upload className="h-4 w-4" aria-hidden="true" />
-                  Import
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/12 bg-white/8 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-white/78">
-                    Reset personal config
-                  </p>
-                  <p className="mt-1 text-xs text-white/46">
-                    Restore the built-in wallpaper and links.
-                  </p>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white/82">
+                      {widget.title}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-white/44">
+                      {hidden ? 'Hidden from home' : 'Visible on home'}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={hidden ? 'glass' : 'ghost'}
+                    onClick={() =>
+                      hidden ? showWidget(widget.id) : hideWidget(widget.id)
+                    }
+                  >
+                    {hidden ? (
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {hidden ? 'Show' : 'Hide'}
+                  </Button>
                 </div>
-                <Button variant="ghost" onClick={resetAll}>
-                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                  Reset
-                </Button>
-              </div>
-            </div>
+              )
+            })}
           </div>
         ) : null}
       </div>

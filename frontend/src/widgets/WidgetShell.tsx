@@ -1,4 +1,4 @@
-import { GripHorizontal } from 'lucide-react'
+import { EyeOff, GripHorizontal } from 'lucide-react'
 import { useRef } from 'react'
 import type { PropsWithChildren } from 'react'
 
@@ -8,6 +8,7 @@ import { cn } from '../utils/cn'
 type WidgetShellProps = PropsWithChildren<{
   title: string
   className?: string
+  onHide?: () => void
   onOpen?: () => void
 }>
 
@@ -15,9 +16,11 @@ export function WidgetShell({
   title,
   className,
   children,
+  onHide,
   onOpen,
 }: WidgetShellProps) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const pointerMovedRef = useRef(false)
 
   return (
     <GlassCard
@@ -30,33 +33,97 @@ export function WidgetShell({
         <h2 className="truncate text-sm font-semibold tracking-wide text-white/86">
           {title}
         </h2>
-        <div
-          className="widget-drag-handle -mr-1 flex h-7 w-8 cursor-grab items-center justify-center rounded-full text-white/54 transition hover:bg-white/12 hover:text-white active:cursor-grabbing"
-          aria-label={`Drag ${title}`}
-          role="presentation"
-          title={onOpen ? `Open ${title}` : `Drag ${title}`}
-          onMouseDown={(event) => {
-            pointerStartRef.current = {
-              x: event.clientX,
-              y: event.clientY,
-            }
-          }}
-          onMouseUp={(event) => {
-            const start = pointerStartRef.current
-            pointerStartRef.current = null
+        <div className="-mr-1 flex items-center gap-1">
+          {onHide ? (
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-white/42 transition hover:bg-white/12 hover:text-white"
+              aria-label={`Hide ${title}`}
+              title={`Hide ${title}`}
+              onClick={onHide}
+            >
+              <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="widget-drag-handle flex h-7 w-8 cursor-grab items-center justify-center rounded-full text-white/54 transition hover:bg-white/12 hover:text-white active:cursor-grabbing"
+            aria-label={`Drag ${title}`}
+            title={onOpen ? `Open ${title}` : `Drag ${title}`}
+            onPointerDownCapture={(event) => {
+              pointerStartRef.current = {
+                x: event.clientX,
+                y: event.clientY,
+              }
+              pointerMovedRef.current = false
+            }}
+            onPointerMoveCapture={(event) => {
+              const start = pointerStartRef.current
 
-            if (!start || !onOpen) {
-              return
-            }
+              if (!start) {
+                return
+              }
 
-            const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y)
+              pointerMovedRef.current =
+                Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5
+            }}
+            onPointerUpCapture={(event) => {
+              const start = pointerStartRef.current
 
-            if (moved < 5) {
-              onOpen()
-            }
-          }}
-        >
-          <GripHorizontal className="h-4 w-4" aria-hidden="true" />
+              if (!start || !onOpen) {
+                return
+              }
+
+              const moved =
+                Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5
+
+              if (!moved) {
+                event.stopPropagation()
+                onOpen()
+              }
+            }}
+            onMouseDown={(event) => {
+              pointerStartRef.current = {
+                x: event.clientX,
+                y: event.clientY,
+              }
+              pointerMovedRef.current = false
+            }}
+            onMouseMove={(event) => {
+              const start = pointerStartRef.current
+
+              if (!start) {
+                return
+              }
+
+              pointerMovedRef.current =
+                Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5
+            }}
+            onMouseUp={(event) => {
+              const start = pointerStartRef.current
+              pointerStartRef.current = null
+
+              if (!start || !onOpen) {
+                return
+              }
+
+              const moved = Math.hypot(
+                event.clientX - start.x,
+                event.clientY - start.y,
+              )
+
+              if (moved < 5) {
+                onOpen()
+              }
+            }}
+            onClick={() => {
+              if (!pointerMovedRef.current) {
+                onOpen?.()
+              }
+            }}
+          >
+            <GripHorizontal className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
       <div className="min-h-0 flex-1">{children}</div>

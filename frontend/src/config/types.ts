@@ -43,6 +43,12 @@ export type DataWidgetConfig = BaseWidgetConfig & {
     | 'codex.usage'
     | 'automation.digest'
     | 'scripts.status'
+    | 'notifications.center'
+    | 'homework.due'
+    | 'notes.sticky'
+    | 'weather.summary'
+    | 'mail.digest'
+    | 'important.info'
   endpoint?: string
   refreshIntervalMs?: number
 }
