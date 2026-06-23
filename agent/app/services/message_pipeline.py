@@ -30,6 +30,25 @@ MAX_BODY_CHARS = int(os.getenv("MAIL_MAX_BODY_CHARS", "6000"))
 DEFAULT_MAX_FETCH = int(os.getenv("MAIL_MAX_FETCH", "20"))
 DEFAULT_SYNC_LOOKBACK_DAYS = int(os.getenv("MAIL_SYNC_LOOKBACK_DAYS", "14"))
 HOMEWORK_MONITOR_PREFIX = "[Homework Monitor]"
+FORWARDED_SOURCE_HEADERS = (
+    "to",
+    "cc",
+    "bcc",
+    "delivered-to",
+    "envelope-to",
+    "x-original-to",
+    "x-forwarded-to",
+    "resent-to",
+    "apparently-to",
+)
+
+
+@dataclass(frozen=True)
+class ForwardedSource:
+    id: str
+    label: str
+    email_address: str
+    match_terms: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -48,6 +67,7 @@ class MailAccount:
     web_search_url: str = ""
     client_id: str = ""
     tenant: str = "consumers"
+    forwarded_sources: tuple[ForwardedSource, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -202,7 +222,11 @@ def load_mail_accounts() -> list[MailAccount]:
         if not isinstance(item, dict):
             continue
 
+        if item.get("enabled") is False:
+            continue
+
         provider = str(item.get("provider") or "imap")
+        forwarded_sources = _parse_forwarded_sources(item)
 
         password = item.get("password")
         password_env = item.get("passwordEnv")
@@ -232,6 +256,7 @@ def load_mail_accounts() -> list[MailAccount]:
                     max_fetch=int(item.get("maxFetch") or DEFAULT_MAX_FETCH),
                     client_id=client_id,
                     tenant=str(item.get("tenant") or "consumers"),
+                    forwarded_sources=forwarded_sources,
                 )
             )
             continue
@@ -253,10 +278,49 @@ def load_mail_accounts() -> list[MailAccount]:
                 use_ssl=bool(item.get("useSsl", True)),
                 max_fetch=int(item.get("maxFetch") or DEFAULT_MAX_FETCH),
                 web_search_url=str(item.get("webSearchUrl") or ""),
+                forwarded_sources=forwarded_sources,
             )
         )
 
     return accounts
+
+
+def _parse_forwarded_sources(item: dict[str, Any]) -> tuple[ForwardedSource, ...]:
+    raw_sources = item.get("forwardedSources") or []
+
+    if not isinstance(raw_sources, list):
+        return ()
+
+    sources: list[ForwardedSource] = []
+
+    for raw_source in raw_sources:
+        if not isinstance(raw_source, dict):
+            continue
+
+        email_address = str(raw_source.get("email") or "").strip()
+        if not email_address:
+            continue
+
+        match_values = raw_source.get("match")
+        if isinstance(match_values, list):
+            match_terms = tuple(
+                str(value).strip().lower()
+                for value in match_values
+                if str(value).strip()
+            )
+        else:
+            match_terms = (email_address.lower(),)
+
+        sources.append(
+            ForwardedSource(
+                id=str(raw_source.get("id") or email_address),
+                label=str(raw_source.get("label") or email_address),
+                email_address=email_address,
+                match_terms=match_terms or (email_address.lower(),),
+            )
+        )
+
+    return tuple(sources)
 
 
 def _get_sync_state(connection: sqlite3.Connection, source: str, account_id: str, key: str) -> str | None:
@@ -328,6 +392,32 @@ def _message_sender(message: EmailMessage) -> str:
     return str(sender or "")
 
 
+def _header_text(message: EmailMessage, names: tuple[str, ...]) -> str:
+    values: list[str] = []
+
+    for name in names:
+        for value in message.get_all(name, []):
+            values.append(str(value))
+
+    return "\n".join(values).lower()
+
+
+def _forwarded_source_for_message(
+    account: MailAccount,
+    message: EmailMessage,
+) -> ForwardedSource | None:
+    if not account.forwarded_sources:
+        return None
+
+    header_text = _header_text(message, FORWARDED_SOURCE_HEADERS)
+
+    for source in account.forwarded_sources:
+        if any(term and term in header_text for term in source.match_terms):
+            return source
+
+    return None
+
+
 def _message_received_at(message: EmailMessage) -> str:
     raw_date = message["date"]
 
@@ -373,14 +463,18 @@ def _parse_mail_message(account: MailAccount, uidvalidity: str, uid: str, raw: b
     message_id = f"mail:{account.id}:{source_item_id}"
     body_text = _message_text(message)[:MAX_BODY_CHARS]
     title = str(message["subject"] or "(no subject)")
+    forwarded_source = _forwarded_source_for_message(account, message)
+    display_account_id = forwarded_source.id if forwarded_source else account.id
+    display_account_label = forwarded_source.label if forwarded_source else account.label
+    display_account_email = forwarded_source.email_address if forwarded_source else account.email_address
 
     return MessageItem(
         id=message_id,
         source="mail",
         source_item_id=source_item_id,
-        account_id=account.id,
-        account_label=account.label,
-        account_email=account.email_address,
+        account_id=display_account_id,
+        account_label=display_account_label,
+        account_email=display_account_email,
         title=title,
         sender=_message_sender(message),
         received_at=_message_received_at(message),
@@ -418,6 +512,9 @@ def _save_message(connection: sqlite3.Connection, item: MessageItem) -> bool:
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
+          account_id = excluded.account_id,
+          account_label = excluded.account_label,
+          account_email = excluded.account_email,
           title = excluded.title,
           sender = excluded.sender,
           received_at = excluded.received_at,
