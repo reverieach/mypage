@@ -27,6 +27,7 @@ MAIL_ACCOUNTS_PATH = DATA_DIR / "mail_accounts.json"
 MAX_BODY_CHARS = int(os.getenv("MAIL_MAX_BODY_CHARS", "6000"))
 DEFAULT_MAX_FETCH = int(os.getenv("MAIL_MAX_FETCH", "20"))
 DEFAULT_SYNC_LOOKBACK_DAYS = int(os.getenv("MAIL_SYNC_LOOKBACK_DAYS", "14"))
+HOMEWORK_MONITOR_PREFIX = "[Homework Monitor]"
 
 
 @dataclass(frozen=True)
@@ -308,6 +309,13 @@ def _parse_mail_message(account: MailAccount, uidvalidity: str, uid: str, raw: b
     )
 
 
+def _is_homework_delivery_message(item: MessageItem) -> bool:
+    return (
+        item.account_email.lower().endswith("@qq.com")
+        and item.title.startswith(HOMEWORK_MONITOR_PREFIX)
+    )
+
+
 def _save_message(connection: sqlite3.Connection, item: MessageItem) -> bool:
     body_hash = hashlib.sha256(item.body_text.encode("utf-8")).hexdigest()
     now = now_iso()
@@ -414,7 +422,12 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
             if not raw_message:
                 continue
 
-            items.append(_parse_mail_message(account, uidvalidity, uid, raw_message))
+            item = _parse_mail_message(account, uidvalidity, uid, raw_message)
+
+            if _is_homework_delivery_message(item):
+                continue
+
+            items.append(item)
 
         if uids:
             with _connect() as connection:
@@ -706,6 +719,10 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
               a.analyzed_at
             FROM messages m
             LEFT JOIN message_analysis a ON a.message_id = m.id
+            WHERE NOT (
+              LOWER(m.account_email) LIKE '%@qq.com'
+              AND m.title LIKE '[Homework Monitor]%'
+            )
             ORDER BY m.received_at DESC
             LIMIT ?
             """,
@@ -775,6 +792,10 @@ def notification_center() -> dict[str, Any]:
             SELECT id, source, title, summary, time, unread, importance,
                    account_label, account_email, web_link
             FROM notification_items
+            WHERE NOT (
+              LOWER(account_email) LIKE '%@qq.com'
+              AND title LIKE '[Homework Monitor]%'
+            )
             ORDER BY time DESC
             LIMIT 20
             """
