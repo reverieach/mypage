@@ -1,5 +1,14 @@
 [
   {
+    "id": "outlook-main",
+    "provider": "microsoft_graph",
+    "label": "Outlook",
+    "email": "you@outlook.com",
+    "tenant": "consumers",
+    "clientIdEnv": "MICROSOFT_GRAPH_CLIENT_ID",
+    "maxFetch": 20
+  },
+  {
     "id": "gmail-main",
     "label": "Gmail",
     "email": "you@gmail.com",

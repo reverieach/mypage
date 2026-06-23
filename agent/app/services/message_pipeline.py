@@ -9,6 +9,7 @@ import re
 import sqlite3
 import ssl
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -23,6 +24,7 @@ from app.services.cache import DATA_DIR, LOCAL_TZ, now_iso
 
 DB_PATH = DATA_DIR / "messages.sqlite3"
 MAIL_ACCOUNTS_PATH = DATA_DIR / "mail_accounts.json"
+OAUTH_TOKENS_PATH = DATA_DIR / "oauth_tokens.json"
 
 MAX_BODY_CHARS = int(os.getenv("MAIL_MAX_BODY_CHARS", "6000"))
 DEFAULT_MAX_FETCH = int(os.getenv("MAIL_MAX_FETCH", "20"))
@@ -36,6 +38,7 @@ class MailAccount:
     label: str
     email_address: str
     host: str
+    provider: str = "imap"
     port: int = 993
     username: str = ""
     password: str = ""
@@ -43,6 +46,8 @@ class MailAccount:
     use_ssl: bool = True
     max_fetch: int = DEFAULT_MAX_FETCH
     web_search_url: str = ""
+    client_id: str = ""
+    tenant: str = "consumers"
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,46 @@ def _load_json_file(path: Path) -> Any:
         return json.load(file)
 
 
+def _read_json_dict(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+
+    data = _load_json_file(path)
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def _post_form(url: str, data: dict[str, str], timeout: float = 20) -> dict[str, Any]:
+    encoded = urllib.parse.urlencode(data).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=encoded,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        parsed = json.loads(response.read().decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
+
+
+def _json_get(url: str, token: str, timeout: float = 20) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        method="GET",
+    )
+
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        parsed = json.loads(response.read().decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
+
+
 def load_mail_accounts() -> list[MailAccount]:
     raw = os.getenv("MAIL_ACCOUNTS_JSON")
 
@@ -157,6 +202,8 @@ def load_mail_accounts() -> list[MailAccount]:
         if not isinstance(item, dict):
             continue
 
+        provider = str(item.get("provider") or "imap")
+
         password = item.get("password")
         password_env = item.get("passwordEnv")
 
@@ -166,6 +213,28 @@ def load_mail_accounts() -> list[MailAccount]:
         username = str(item.get("username") or item.get("email") or "")
         email_address = str(item.get("email") or username)
         account_id = str(item.get("id") or email_address or item.get("host"))
+        client_id = str(
+            item.get("clientId")
+            or os.getenv(str(item.get("clientIdEnv") or "MICROSOFT_GRAPH_CLIENT_ID"), "")
+        )
+
+        if provider == "microsoft_graph":
+            if not account_id or not email_address or not client_id:
+                continue
+
+            accounts.append(
+                MailAccount(
+                    id=account_id,
+                    label=str(item.get("label") or email_address),
+                    email_address=email_address,
+                    host="graph.microsoft.com",
+                    provider=provider,
+                    max_fetch=int(item.get("maxFetch") or DEFAULT_MAX_FETCH),
+                    client_id=client_id,
+                    tenant=str(item.get("tenant") or "consumers"),
+                )
+            )
+            continue
 
         if not account_id or not item.get("host") or not username or not password:
             continue
@@ -176,6 +245,7 @@ def load_mail_accounts() -> list[MailAccount]:
                 label=str(item.get("label") or email_address),
                 email_address=email_address,
                 host=str(item["host"]),
+                provider=provider,
                 port=int(item.get("port") or 993),
                 username=username,
                 password=str(password),
@@ -280,6 +350,18 @@ def _message_web_link(account: MailAccount, message_id: str) -> str:
         return account.web_search_url.replace("{messageId}", urllib.request.quote(message_id))
 
     return ""
+
+
+def _parse_graph_time(value: str) -> str:
+    if not value:
+        return now_iso()
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return now_iso()
+
+    return parsed.astimezone(LOCAL_TZ).isoformat(timespec="seconds")
 
 
 def _parse_mail_message(account: MailAccount, uidvalidity: str, uid: str, raw: bytes) -> MessageItem:
@@ -440,6 +522,226 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
             client.logout()
         except imaplib.IMAP4.error:
             pass
+
+
+def _token_url(account: MailAccount) -> str:
+    return f"https://login.microsoftonline.com/{account.tenant}/oauth2/v2.0/token"
+
+
+def _device_code_url(account: MailAccount) -> str:
+    return f"https://login.microsoftonline.com/{account.tenant}/oauth2/v2.0/devicecode"
+
+
+def _graph_scopes() -> str:
+    return os.getenv(
+        "MICROSOFT_GRAPH_SCOPES",
+        "offline_access User.Read Mail.Read",
+    )
+
+
+def _load_oauth_tokens() -> dict[str, Any]:
+    return _read_json_dict(OAUTH_TOKENS_PATH)
+
+
+def _save_oauth_token(account_id: str, token: dict[str, Any]) -> None:
+    tokens = _load_oauth_tokens()
+    tokens[account_id] = {
+        **tokens.get(account_id, {}),
+        **token,
+        "savedAt": now_iso(),
+    }
+    _write_json(OAUTH_TOKENS_PATH, tokens)
+
+
+def _get_oauth_token(account_id: str) -> dict[str, Any] | None:
+    token = _load_oauth_tokens().get(account_id)
+    return token if isinstance(token, dict) else None
+
+
+def microsoft_graph_accounts() -> list[MailAccount]:
+    return [account for account in load_mail_accounts() if account.provider == "microsoft_graph"]
+
+
+def start_microsoft_device_auth(account_id: str | None = None) -> dict[str, Any]:
+    accounts = microsoft_graph_accounts()
+
+    if account_id:
+        accounts = [account for account in accounts if account.id == account_id]
+
+    if not accounts:
+        return {
+            "configured": False,
+            "error": "No microsoft_graph account with MICROSOFT_GRAPH_CLIENT_ID configured.",
+        }
+
+    account = accounts[0]
+    response = _post_form(
+        _device_code_url(account),
+        {
+            "client_id": account.client_id,
+            "scope": _graph_scopes(),
+        },
+    )
+
+    return {
+        "configured": True,
+        "accountId": account.id,
+        "userCode": response.get("user_code"),
+        "deviceCode": response.get("device_code"),
+        "verificationUri": response.get("verification_uri"),
+        "expiresIn": response.get("expires_in"),
+        "interval": response.get("interval"),
+        "message": response.get("message"),
+    }
+
+
+def poll_microsoft_device_auth(account_id: str, device_code: str) -> dict[str, Any]:
+    account = next(
+        (item for item in microsoft_graph_accounts() if item.id == account_id),
+        None,
+    )
+
+    if not account:
+        return {"authorized": False, "error": "Unknown Microsoft Graph account."}
+
+    try:
+        token = _post_form(
+            _token_url(account),
+            {
+                "client_id": account.client_id,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "device_code": device_code,
+            },
+        )
+    except urllib.error.HTTPError as exc:
+        try:
+            error_data = json.loads(exc.read().decode("utf-8"))
+        except json.JSONDecodeError:
+            error_data = {"error": exc.reason}
+
+        return {
+            "authorized": False,
+            "error": error_data.get("error"),
+            "errorDescription": error_data.get("error_description"),
+        }
+
+    _save_oauth_token(account.id, token)
+
+    return {
+        "authorized": True,
+        "accountId": account.id,
+        "expiresIn": token.get("expires_in"),
+    }
+
+
+def refresh_microsoft_token(account: MailAccount) -> str | None:
+    token = _get_oauth_token(account.id)
+
+    if not token:
+        return None
+
+    refresh_token = token.get("refresh_token")
+
+    if not refresh_token:
+        return str(token.get("access_token") or "") or None
+
+    try:
+        refreshed = _post_form(
+            _token_url(account),
+            {
+                "client_id": account.client_id,
+                "grant_type": "refresh_token",
+                "refresh_token": str(refresh_token),
+                "scope": _graph_scopes(),
+            },
+        )
+    except urllib.error.HTTPError:
+        return str(token.get("access_token") or "") or None
+
+    _save_oauth_token(account.id, refreshed)
+    return str(refreshed.get("access_token") or token.get("access_token") or "") or None
+
+
+def microsoft_auth_status() -> dict[str, Any]:
+    try:
+        accounts = microsoft_graph_accounts()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {"configured": False, "error": f"mail config failed: {exc}", "accounts": []}
+
+    tokens = _load_oauth_tokens()
+
+    return {
+        "configured": bool(accounts),
+        "accounts": [
+            {
+                "id": account.id,
+                "label": account.label,
+                "email": account.email_address,
+                "authorized": account.id in tokens,
+                "tenant": account.tenant,
+            }
+            for account in accounts
+        ],
+    }
+
+
+def collect_microsoft_graph_account(account: MailAccount) -> list[MessageItem]:
+    token = refresh_microsoft_token(account)
+
+    if not token:
+        raise RuntimeError("Microsoft Graph account is not authorized. Start device auth first.")
+
+    query = urllib.parse.urlencode(
+        {
+            "$top": str(account.max_fetch),
+            "$select": "id,subject,from,receivedDateTime,bodyPreview,webLink",
+            "$orderby": "receivedDateTime desc",
+        }
+    )
+    response = _json_get(
+        f"https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?{query}",
+        token,
+    )
+    messages = response.get("value", [])
+    items: list[MessageItem] = []
+
+    if not isinstance(messages, list):
+        return items
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+
+        graph_id = str(message.get("id") or "")
+
+        if not graph_id:
+            continue
+
+        sender = (
+            message.get("from", {})
+            .get("emailAddress", {})
+            .get("address", "")
+        )
+        body_preview = str(message.get("bodyPreview") or "")
+        item = MessageItem(
+            id=f"mail:{account.id}:{graph_id}",
+            source="mail",
+            source_item_id=graph_id,
+            account_id=account.id,
+            account_label=account.label,
+            account_email=account.email_address,
+            title=str(message.get("subject") or "(no subject)"),
+            sender=str(sender),
+            received_at=_parse_graph_time(str(message.get("receivedDateTime") or "")),
+            snippet=body_preview[:320],
+            body_text=body_preview[:MAX_BODY_CHARS],
+            web_link=str(message.get("webLink") or ""),
+            raw_ref=graph_id,
+        )
+
+        items.append(item)
+
+    return items
 
 
 def _fallback_analysis(item: MessageItem) -> dict[str, Any]:
@@ -666,7 +968,10 @@ def refresh_mail() -> dict[str, Any]:
 
     for account in accounts:
         try:
-            items = collect_imap_account(account)
+            if account.provider == "microsoft_graph":
+                items = collect_microsoft_graph_account(account)
+            else:
+                items = collect_imap_account(account)
         except (imaplib.IMAP4.error, OSError, RuntimeError, ValueError) as exc:
             errors.append(f"{account.label}: {exc}")
             continue

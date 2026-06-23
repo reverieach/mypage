@@ -15,8 +15,11 @@ from app.services.cache import envelope, read_cached_or_sample
 from app.services.homework import read_due_homework
 from app.services.message_pipeline import (
     mail_summary,
+    microsoft_auth_status,
     notification_center,
+    poll_microsoft_device_auth,
     refresh_mail,
+    start_microsoft_device_auth,
 )
 
 router = APIRouter(prefix="/api")
@@ -65,6 +68,24 @@ def mail_summary_endpoint() -> dict[str, Any]:
 @router.post("/mail/refresh")
 def mail_refresh_endpoint() -> dict[str, Any]:
     return envelope(refresh_mail(), stale=False)
+
+
+@router.get("/mail/microsoft/status")
+def microsoft_status_endpoint() -> dict[str, Any]:
+    return envelope(microsoft_auth_status(), stale=False)
+
+
+@router.post("/mail/microsoft/device/start")
+def microsoft_device_start_endpoint(account_id: str | None = None) -> dict[str, Any]:
+    return envelope(start_microsoft_device_auth(account_id), stale=False)
+
+
+@router.post("/mail/microsoft/device/poll")
+def microsoft_device_poll_endpoint(account_id: str, device_code: str) -> dict[str, Any]:
+    return envelope(
+        poll_microsoft_device_auth(account_id, device_code),
+        stale=False,
+    )
 
 
 @router.get("/homework/due")
