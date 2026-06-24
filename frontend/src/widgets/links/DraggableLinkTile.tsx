@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
-import { X } from 'lucide-react'
+import { GripVertical, X } from 'lucide-react'
+import type { DragEvent } from 'react'
 import { useRef, useState } from 'react'
 
 import type { QuickLink } from '../../config/types'
@@ -17,12 +18,41 @@ type DraggableLinkTileProps = {
 
 export function DraggableLinkTile({
   link,
+  index,
   size = 'compact',
   fit = false,
 }: DraggableLinkTileProps) {
+  const moveLinkToIndex = useConfigStore((state) => state.moveLinkToIndex)
   const removeLink = useConfigStore((state) => state.removeLink)
   const retriedIconRef = useRef<string | null>(null)
   const [iconVersion, setIconVersion] = useState(0)
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('application/x-mypage-link-id', link.id)
+    event.dataTransfer.setData('text/plain', link.id)
+  }
+
+  function handleDragOver(event: DragEvent<HTMLAnchorElement>) {
+    if (event.dataTransfer.types.includes('application/x-mypage-link-id')) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLAnchorElement>) {
+    const draggedId = event.dataTransfer.getData('application/x-mypage-link-id')
+
+    if (!draggedId) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (draggedId !== link.id) {
+      moveLinkToIndex(draggedId, index)
+    }
+  }
 
   function refreshBrokenIcon() {
     if (retriedIconRef.current === link.href) {
@@ -54,7 +84,23 @@ export function DraggableLinkTile({
         !fit && size === 'compact' ? 'min-h-24 py-3' : null,
       )}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
+      <button
+        type="button"
+        className="absolute left-1 top-1 rounded-full p-1 text-white/0 opacity-0 transition hover:bg-white/12 hover:text-white/78 hover:cursor-grab active:cursor-grabbing group-hover:text-white/34 group-hover:opacity-100 focus-visible:text-white/78 focus-visible:opacity-100"
+        aria-label={`Drag ${link.label}`}
+        title={`Drag ${link.label}`}
+        draggable
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+        onDragStart={handleDragStart}
+      >
+        <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
       <LinkFavicon
         href={link.href}
         label={link.label}
