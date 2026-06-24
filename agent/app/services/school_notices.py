@@ -173,6 +173,97 @@ def _normalize_space(value: str) -> str:
     return re.sub(r"[ \u3000]+", " ", value).strip()
 
 
+NOTICE_BODY_END_MARKERS = (
+    "公告附件如下",
+    "打印",
+    "关 闭",
+    "关闭",
+    "相关通知",
+    "最新通知",
+    "院系机构",
+    "版权所有",
+    "Loading",
+)
+
+NOTICE_NOISE_LINES = {
+    "|",
+    "欢迎访问信息服务门户",
+    "修改密码",
+    "个人资料",
+    "帮助",
+    "退出",
+    "门户首页",
+    "规章制度",
+    "办事指南",
+    "校内通知",
+    "校内新闻",
+    "资源中心",
+    "党团行政",
+    "教学科研",
+    "正文",
+    "浏览",
+    "次",
+}
+
+
+def _clean_notice_text(text: str) -> str:
+    lines = [
+        _normalize_space(line)
+        for line in _normalize_space(text).splitlines()
+        if _normalize_space(line)
+    ]
+
+    if not lines:
+        return ""
+
+    start_index = 0
+
+    for index, line in enumerate(lines):
+        if line == "正文":
+            start_index = index + 1
+            break
+
+    body_lines: list[str] = []
+
+    for line in lines[start_index:]:
+        if any(marker in line for marker in NOTICE_BODY_END_MARKERS):
+            break
+
+        if line in NOTICE_NOISE_LINES:
+            continue
+
+        if "欢迎访问信息服务门户" in line:
+            continue
+
+        body_lines.append(line)
+
+    return _normalize_space("\n".join(body_lines))
+
+
+def _summary_from_detail(title: str, detail_text: str) -> str:
+    lines: list[str] = []
+
+    for line in detail_text.splitlines():
+        line = _normalize_space(line)
+
+        if not line:
+            continue
+
+        if line == title:
+            continue
+
+        if line.startswith(("发布部门：", "发布时间：")):
+            continue
+
+        if line in {"浏览", "次"}:
+            continue
+
+        lines.append(line)
+
+    summary = _normalize_space(" ".join(lines))
+    return summary[:120] or title
+
+
 @contextmanager
 def _pushd(path: Path):
     previous = Path.cwd()
@@ -444,7 +535,7 @@ def _extract_links(list_html: str) -> list[dict[str, Any]]:
 def _extract_text(page_html: str) -> str:
     parser = TextExtractor()
     parser.feed(page_html)
-    text = parser.text()
+    text = _clean_notice_text(parser.text())
     return text[:8000]
 
 
@@ -498,7 +589,7 @@ def _fallback_analysis(candidate: dict[str, Any], detail_text: str) -> dict[str,
         "importance": "important" if score >= 75 else "normal",
         "priorityScore": score if relevant else 0,
         "category": high_hits[0] if high_hits else "school",
-        "summary": _normalize_space(detail_text.replace("\n", " "))[:120] or candidate["title"],
+        "summary": _summary_from_detail(title, detail_text),
         "deadline": deadline,
         "displayReason": "Local keyword fallback analysis.",
     }
