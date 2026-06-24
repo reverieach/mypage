@@ -24,6 +24,9 @@ VIDEO_EXTENSIONS = {
     ".mov",
 }
 MAX_WALLPAPER_BYTES = 250 * 1024 * 1024
+WALLPAPER_CACHE_HEADERS = {
+    "Cache-Control": "public, max-age=31536000, immutable",
+}
 
 
 def _safe_stem(filename: str) -> str:
@@ -40,6 +43,22 @@ def _wallpaper_kind(extension: str) -> str:
         return "video"
 
     raise ValueError("Wallpaper must be an image or mp4/webm video")
+
+
+def wallpaper_media_type(path: Path) -> str:
+    extension = path.suffix.lower()
+
+    return {
+        ".avif": "image/avif",
+        ".gif": "image/gif",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".mov": "video/quicktime",
+        ".mp4": "video/mp4",
+        ".png": "image/png",
+        ".webm": "video/webm",
+        ".webp": "image/webp",
+    }.get(extension, "application/octet-stream")
 
 
 def save_wallpaper_upload(

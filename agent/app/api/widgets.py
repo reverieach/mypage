@@ -43,6 +43,7 @@ from app.services.user_config import (
     save_user_config,
 )
 from app.services.wallpapers import WALLPAPER_DIR, save_wallpaper_upload
+from app.services.wallpapers import WALLPAPER_CACHE_HEADERS, wallpaper_media_type
 
 router = APIRouter(prefix="/api")
 
@@ -100,7 +101,11 @@ def wallpaper_file(file_name: str) -> FileResponse:
     if root not in path.parents or not path.exists():
         raise HTTPException(status_code=404, detail="Wallpaper file not found")
 
-    return FileResponse(path, media_type=icon_media_type(path))
+    return FileResponse(
+        path,
+        media_type=wallpaper_media_type(path),
+        headers=WALLPAPER_CACHE_HEADERS,
+    )
 
 
 @router.post("/link-icons/cache")
