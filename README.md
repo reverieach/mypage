@@ -1,5 +1,7 @@
 # MyPage
 
+[中文说明](README.zh-CN.md)
+
 MyPage is a personal Chrome/Edge start page and new-tab dashboard. It is built for one local Windows user rather than a hosted SaaS product.
 
 The page combines an Apple-style wallpaper surface, search, draggable widgets, quick links, mail summaries, notifications, BUPT homework, school notices, and a local config backup.
