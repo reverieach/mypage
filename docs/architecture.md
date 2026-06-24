@@ -92,6 +92,7 @@ Important files:
 - `agent/app/services/homework.py`: BUPT homework JSON reader and silent manual refresh.
 - `agent/app/services/school_notices.py`: BUPT school notice fetch, relevance filtering, dismiss state.
 - `agent/app/services/user_config.py`: trusted local backup for user configuration and layout snapshots.
+- `agent/app/services/link_icons.py`: link icon resolver, local icon registry, and favicon cache.
 - `agent/app/sample_data.py`: fallback sample data.
 
 The Agent binds to `127.0.0.1:3217`. It should not be exposed on a public network.
@@ -132,6 +133,12 @@ Static/cache-backed widgets:
 - `GET /api/automation/digest`
 - `GET /api/scripts/status`
 
+Link icons:
+
+- `GET /api/link-icons/resolve?href=...`
+- `POST /api/link-icons/cache`
+- `GET /api/link-icons/files/{file_name}`
+
 Homework:
 
 - `GET /api/homework/due`
@@ -164,6 +171,8 @@ Ignored local runtime data:
 - `agent/app/data/oauth_tokens.json`
 - `agent/app/data/messages.sqlite3`
 - `agent/app/data/user_config.sqlite3`
+- `agent/app/data/link_icons.sqlite3`
+- `agent/app/data/link-icons/`
 - other `agent/app/data/*.json`
 
 Committed templates:
@@ -188,6 +197,27 @@ The frontend keeps `localStorage` as a fast cache, but the Agent is the trusted 
 `ConfigBackupSync` loads Agent backup at startup. If Agent data is newer, it restores frontend stores. If local data is newer or no Agent backup exists, it saves local data to Agent. Later changes are saved back to Agent with a short debounce.
 
 The Agent stores the current config in `user_config.sqlite3` and snapshots previous versions before each save. The Settings Backup tab can export, import, refresh status, and restore the latest snapshot.
+
+### Link Icons
+
+Quick links store only user intent:
+
+- `id`
+- `label`
+- `href`
+- `category`
+
+They do not store favicon URLs. Icons are derived cache data owned by the Agent.
+
+The frontend renders icons through a stable URL:
+
+```txt
+/api/link-icons/resolve?href=https%3A%2F%2Fexample.com
+```
+
+The Agent normalizes the link host, looks up `agent/app/data/link_icons.sqlite3`, and returns the cached image file from `agent/app/data/link-icons/`. If there is no cached icon, the Agent fetches one, validates that the response is actually an image, stores it locally, records the registry row, and returns the image. If fetching fails and a previous icon exists, the previous icon stays in use. If no icon exists, the Agent generates a local fallback SVG.
+
+This keeps user config stable when an icon changes from `.ico` to `.png` or when a site changes favicon paths. Do not add `icon`, `favicon`, or concrete `/api/link-icons/files/...` URLs back into `QuickLink` or config backup.
 
 ### Mail
 

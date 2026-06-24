@@ -33,6 +33,8 @@ Common files:
 - `oauth_tokens.json`: Microsoft Graph refresh tokens.
 - `messages.sqlite3`: normalized messages, analyses, notification state.
 - `user_config.sqlite3`: trusted local backup for user config and layout snapshots.
+- `link_icons.sqlite3`: registry for derived quick-link icon cache.
+- `link-icons/`: cached favicon/image files.
 - optional widget cache JSON files.
 
 Do not commit runtime data.
@@ -60,6 +62,13 @@ Main endpoints:
 - `POST /api/config/snapshots/{snapshot_id}/restore`
 
 The frontend still uses `localStorage` as a fast browser cache, but this SQLite store is the trusted local backup for links, wallpapers, hidden widgets, layouts, sticky note text, and the selected search engine. Each save snapshots the previous config before replacing it.
+
+Quick links should not contain concrete icon URLs. Link icons are derived cache data served by:
+
+- `GET /api/link-icons/resolve?href=...`
+- `POST /api/link-icons/cache`
+
+The resolver keeps a stable browser-facing URL while the Agent manages file names, content hashes, source URLs, and fallbacks locally.
 
 ## Mail
 

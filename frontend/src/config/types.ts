@@ -23,7 +23,6 @@ export type QuickLink = {
   label: string
   href: string
   category?: string
-  icon?: string
 }
 
 export type BaseWidgetConfig = {

@@ -1,6 +1,6 @@
 import { GripVertical } from 'lucide-react'
 import type { DragEvent } from 'react'
-import { useEffect, useRef } from 'react'
+import { useRef, useState } from 'react'
 
 import type { QuickLink } from '../../config/types'
 import { cacheLinkIcon } from '../../data/linkIcons'
@@ -22,30 +22,8 @@ export function DraggableLinkTile({
   fit = false,
 }: DraggableLinkTileProps) {
   const moveLinkToIndex = useConfigStore((state) => state.moveLinkToIndex)
-  const updateLink = useConfigStore((state) => state.updateLink)
   const retriedIconRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (link.icon) {
-      return
-    }
-
-    let cancelled = false
-
-    void cacheLinkIcon(link.href, link.label)
-      .then((envelope) => {
-        if (!cancelled && envelope.data.icon) {
-          updateLink(link.id, { icon: envelope.data.icon })
-        }
-      })
-      .catch(() => {
-        // The text fallback keeps links usable when the local Agent is offline.
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [link.href, link.icon, link.id, link.label, updateLink])
+  const [iconVersion, setIconVersion] = useState(0)
 
   function handleDragStart(event: DragEvent<HTMLAnchorElement>) {
     event.dataTransfer.effectAllowed = 'move'
@@ -62,16 +40,16 @@ export function DraggableLinkTile({
   }
 
   function refreshBrokenIcon() {
-    if (!link.icon || retriedIconRef.current === link.icon) {
+    if (retriedIconRef.current === link.href) {
       return
     }
 
-    retriedIconRef.current = link.icon
+    retriedIconRef.current = link.href
 
     void cacheLinkIcon(link.href, link.label, true)
       .then((envelope) => {
-        if (envelope.data.icon && envelope.data.icon !== link.icon) {
-          updateLink(link.id, { icon: envelope.data.icon })
+        if (envelope.data.cached) {
+          setIconVersion(Date.now())
         }
       })
       .catch(() => {
@@ -95,8 +73,9 @@ export function DraggableLinkTile({
     >
       <GripVertical className="absolute right-1.5 top-1.5 h-3.5 w-3.5 text-white/0 transition group-hover:text-white/42" />
       <LinkFavicon
-        icon={link.icon}
+        href={link.href}
         label={link.label}
+        version={iconVersion}
         onIconError={refreshBrokenIcon}
       />
       <span className="w-full truncate text-xs font-medium text-white/82">

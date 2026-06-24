@@ -26,3 +26,13 @@ export async function cacheLinkIcon(
     },
   }
 }
+
+export function linkIconUrl(href: string, version?: number) {
+  const params = new URLSearchParams({ href })
+
+  if (version) {
+    params.set('v', String(version))
+  }
+
+  return resolveAgentUrl(`/api/link-icons/resolve?${params.toString()}`)
+}

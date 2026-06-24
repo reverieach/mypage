@@ -1,22 +1,26 @@
 import { useState } from 'react'
 
+import { linkIconUrl } from '../../data/linkIcons'
 import { cn } from '../../utils/cn'
 
 type LinkFaviconProps = {
-  icon?: string
+  href: string
   label: string
   className?: string
   onIconError?: () => void
+  version?: number
 }
 
 export function LinkFavicon({
-  icon,
+  href,
   label,
   className,
   onIconError,
+  version,
 }: LinkFaviconProps) {
+  const src = linkIconUrl(href, version)
   const [failedIcon, setFailedIcon] = useState<string | null>(null)
-  const canShowIcon = Boolean(icon) && failedIcon !== icon
+  const canShowIcon = failedIcon !== src
   const fallbackLabel = label.trim().slice(0, 1).toUpperCase() || '?'
 
   return (
@@ -28,12 +32,12 @@ export function LinkFavicon({
     >
       {canShowIcon ? (
         <img
-          src={icon}
+          src={src}
           alt=""
           className="h-6 w-6 rounded-md"
           draggable={false}
           onError={() => {
-            setFailedIcon(icon ?? null)
+            setFailedIcon(src)
             onIconError?.()
           }}
         />

@@ -7,6 +7,10 @@ import type { AppConfig, QuickLink } from '../config/types'
 const linksWidget = appConfig.widgets.find((widget) => widget.type === 'links.grid')
 const defaultLinks = linksWidget?.type === 'links.grid' ? linksWidget.links : []
 
+type PersistedQuickLink = QuickLink & {
+  icon?: unknown
+}
+
 export type UserConfigSnapshot = {
   wallpaper: string
   wallpapers: SavedWallpaper[]
@@ -58,6 +62,19 @@ function createWallpaperId() {
   return `wallpaper-${Date.now().toString(36)}`
 }
 
+function stripLinkCache(link: PersistedQuickLink): QuickLink {
+  return {
+    id: link.id,
+    label: link.label,
+    href: link.href,
+    category: link.category,
+  }
+}
+
+function stripLinksCache(links: QuickLink[]) {
+  return links.map((link) => stripLinkCache(link as PersistedQuickLink))
+}
+
 export const defaultWallpapers: SavedWallpaper[] = [
   {
     id: 'default-lake',
@@ -89,7 +106,6 @@ export const useConfigStore = create<ConfigState>()(
               label: link?.label ?? 'New Link',
               href: link?.href ?? 'https://example.com',
               category: link?.category ?? 'Tools',
-              icon: link?.icon,
             },
             ...state.links,
           ],
@@ -135,7 +151,9 @@ export const useConfigStore = create<ConfigState>()(
           wallpapers: Array.isArray(snapshot.wallpapers)
             ? snapshot.wallpapers
             : state.wallpapers,
-          links: Array.isArray(snapshot.links) ? snapshot.links : state.links,
+          links: Array.isArray(snapshot.links)
+            ? stripLinksCache(snapshot.links)
+            : state.links,
           hiddenWidgetIds: Array.isArray(snapshot.hiddenWidgetIds)
             ? snapshot.hiddenWidgetIds
             : state.hiddenWidgetIds,
@@ -210,24 +228,43 @@ export const useConfigStore = create<ConfigState>()(
           hiddenWidgetIds: state.hiddenWidgetIds.filter((widgetId) => widgetId !== id),
           updatedAt: nowStamp(),
         })),
-      setLinks: (links) => set({ links, updatedAt: nowStamp() }),
+      setLinks: (links) => set({ links: stripLinksCache(links), updatedAt: nowStamp() }),
       setSearchEngineId: (id) =>
         set({ searchEngineId: id, updatedAt: nowStamp() }),
       setWallpaper: (wallpaper) => set({ wallpaper, updatedAt: nowStamp() }),
       updateLink: (id, patch) =>
         set((state) => ({
           links: state.links.map((link) =>
-            link.id === id ? { ...link, ...patch } : link,
+            link.id === id
+              ? stripLinkCache({ ...link, ...patch } as PersistedQuickLink)
+              : link,
           ),
           updatedAt: nowStamp(),
         })),
     }),
     {
       name: 'mypage-user-config-v2',
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<UserConfigSnapshot>
+
+        return {
+          ...current,
+          ...persistedState,
+          links: Array.isArray(persistedState.links)
+            ? stripLinksCache(persistedState.links)
+            : current.links,
+          wallpapers: Array.isArray(persistedState.wallpapers)
+            ? persistedState.wallpapers
+            : current.wallpapers,
+          hiddenWidgetIds: Array.isArray(persistedState.hiddenWidgetIds)
+            ? persistedState.hiddenWidgetIds
+            : current.hiddenWidgetIds,
+        }
+      },
       partialize: (state) => ({
         wallpaper: state.wallpaper,
         wallpapers: state.wallpapers,
-        links: state.links,
+        links: stripLinksCache(state.links),
         hiddenWidgetIds: state.hiddenWidgetIds,
         note: state.note,
         searchEngineId: state.searchEngineId,

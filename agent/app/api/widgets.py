@@ -16,7 +16,12 @@ from app.sample_data import (
 )
 from app.services.cache import envelope, read_cached_or_sample
 from app.services.homework import read_due_homework, refresh_due_homework
-from app.services.link_icons import LINK_ICON_DIR, cache_link_icon
+from app.services.link_icons import (
+    LINK_ICON_DIR,
+    cache_link_icon,
+    icon_media_type,
+    resolve_link_icon_file,
+)
 from app.services.message_pipeline import (
     dismiss_mail_message,
     mail_summary,
@@ -95,7 +100,7 @@ def wallpaper_file(file_name: str) -> FileResponse:
     if root not in path.parents or not path.exists():
         raise HTTPException(status_code=404, detail="Wallpaper file not found")
 
-    return FileResponse(path)
+    return FileResponse(path, media_type=icon_media_type(path))
 
 
 @router.post("/link-icons/cache")
@@ -113,6 +118,20 @@ def link_icon_cache(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
             stale=True,
             error=str(exc),
         )
+
+
+@router.get("/link-icons/resolve")
+def link_icon_resolve(
+    href: str,
+    label: str | None = None,
+    refresh: bool = False,
+) -> FileResponse:
+    try:
+        path = resolve_link_icon_file(href, label=label, refresh=refresh)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return FileResponse(path, media_type=icon_media_type(path))
 
 
 @router.get("/link-icons/files/{file_name}")

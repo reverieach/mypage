@@ -5,7 +5,6 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Button } from '../../components/ui/button'
-import { cacheLinkIcon } from '../../data/linkIcons'
 import { useConfigStore } from '../../store/useConfigStore'
 import { inferLinkLabel, normalizeHref } from './linkUtils'
 
@@ -20,35 +19,23 @@ export function AddLinkDialog({ category = 'Tools', trigger }: AddLinkDialogProp
   const [href, setHref] = useState('')
   const [label, setLabel] = useState('')
   const [categoryDraft, setCategoryDraft] = useState(category)
-  const [submitting, setSubmitting] = useState(false)
 
-  async function handleSubmit() {
+  function handleSubmit() {
     const normalizedHref = normalizeHref(href)
 
-    if (!normalizedHref || submitting) {
+    if (!normalizedHref) {
       return
     }
 
-    setSubmitting(true)
     const inferredLabel = label.trim() || inferLinkLabel(normalizedHref)
-    let icon: string | undefined
-
-    try {
-      const envelope = await cacheLinkIcon(normalizedHref, inferredLabel)
-      icon = envelope.data.icon || undefined
-    } catch {
-      icon = undefined
-    }
 
     addLink({
       href: normalizedHref,
       label: inferredLabel,
       category: categoryDraft.trim() || 'Other',
-      icon,
     })
     setHref('')
     setLabel('')
-    setSubmitting(false)
     setOpen(false)
   }
 
@@ -58,8 +45,6 @@ export function AddLinkDialog({ category = 'Tools', trigger }: AddLinkDialogProp
       onOpenChange={(nextOpen) => {
         if (nextOpen) {
           setCategoryDraft(category)
-        } else {
-          setSubmitting(false)
         }
 
         setOpen(nextOpen)
@@ -128,9 +113,9 @@ export function AddLinkDialog({ category = 'Tools', trigger }: AddLinkDialogProp
             </div>
 
             <div className="mt-5 flex justify-end">
-              <Button disabled={submitting} onClick={() => void handleSubmit()}>
+              <Button onClick={handleSubmit}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                {submitting ? 'Adding' : 'Add'}
+                Add
               </Button>
             </div>
                 </motion.div>

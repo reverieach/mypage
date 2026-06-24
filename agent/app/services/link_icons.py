@@ -5,14 +5,16 @@ import html
 from html.parser import HTMLParser
 import re
 import shutil
+import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from app.services.cache import DATA_DIR
+from app.services.cache import DATA_DIR, now_iso
 
 LINK_ICON_DIR = DATA_DIR / "link-icons"
+LINK_ICON_DB_PATH = DATA_DIR / "link_icons.sqlite3"
 MAX_ICON_BYTES = 512 * 1024
 FETCH_TIMEOUT_SECONDS = 8
 
@@ -82,7 +84,55 @@ def _domain_key(hostname: str) -> str:
     return f"{safe_host}-{digest}"
 
 
-def _existing_icon(domain_key: str) -> Path | None:
+def _connect() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(LINK_ICON_DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def ensure_schema() -> None:
+    with _connect() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS link_icons (
+              domain_key TEXT PRIMARY KEY,
+              hostname TEXT NOT NULL,
+              source_url TEXT,
+              file_name TEXT,
+              content_type TEXT,
+              content_hash TEXT,
+              fetched_at TEXT,
+              updated_at TEXT NOT NULL,
+              last_error TEXT
+            )
+            """
+        )
+        connection.commit()
+
+
+def _registry_path(domain_key: str) -> Path | None:
+    ensure_schema()
+
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT file_name FROM link_icons WHERE domain_key = ?",
+            (domain_key,),
+        ).fetchone()
+
+    if not row or not row["file_name"]:
+        return None
+
+    path = (LINK_ICON_DIR / str(row["file_name"])).resolve()
+    root = LINK_ICON_DIR.resolve()
+
+    if root in path.parents and path.exists() and _looks_like_image(path.read_bytes()):
+        return path
+
+    return None
+
+
+def _legacy_icon_path(domain_key: str) -> Path | None:
     for path in sorted(LINK_ICON_DIR.glob(f"{domain_key}.*")):
         if path.is_file() and _looks_like_image(path.read_bytes()):
             return path
@@ -90,6 +140,59 @@ def _existing_icon(domain_key: str) -> Path | None:
         path.unlink(missing_ok=True)
 
     return None
+
+
+def _existing_icon(domain_key: str) -> Path | None:
+    return _registry_path(domain_key) or _legacy_icon_path(domain_key)
+
+
+def _upsert_registry(
+    *,
+    domain_key: str,
+    hostname: str,
+    path: Path | None,
+    source_url: str = "",
+    content_type: str = "",
+    content_hash: str = "",
+    last_error: str = "",
+) -> None:
+    ensure_schema()
+
+    with _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO link_icons (
+              domain_key, hostname, source_url, file_name, content_type,
+              content_hash, fetched_at, updated_at, last_error
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(domain_key) DO UPDATE SET
+              hostname = excluded.hostname,
+              source_url = excluded.source_url,
+              file_name = COALESCE(excluded.file_name, link_icons.file_name),
+              content_type = excluded.content_type,
+              content_hash = excluded.content_hash,
+              fetched_at = excluded.fetched_at,
+              updated_at = excluded.updated_at,
+              last_error = excluded.last_error
+            """,
+            (
+                domain_key,
+                hostname,
+                source_url,
+                path.name if path else None,
+                content_type,
+                content_hash,
+                now_iso() if path else "",
+                now_iso(),
+                last_error,
+            ),
+        )
+        connection.commit()
+
+
+def _stable_icon_url(href: str) -> str:
+    return "/api/link-icons/resolve?" + urllib.parse.urlencode({"href": href})
 
 
 def _extension_from_response(url: str, content_type: str | None) -> str:
@@ -118,6 +221,31 @@ def _looks_like_image(data: bytes) -> bool:
         or data.startswith(b"\x00\x00\x01\x00")
         or prefix.startswith(b"<svg")
     )
+
+
+def icon_media_type(path: Path) -> str:
+    data = path.read_bytes()[:256].lstrip()
+    lower = data.lower()
+
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return "image/gif"
+
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+
+    if data.startswith(b"\x00\x00\x01\x00"):
+        return "image/x-icon"
+
+    if lower.startswith(b"<svg"):
+        return "image/svg+xml"
+
+    return "application/octet-stream"
 
 
 def _html_icon_candidates(parsed: urllib.parse.ParseResult) -> list[str]:
@@ -200,7 +328,7 @@ def _candidate_urls(parsed: urllib.parse.ParseResult) -> list[str]:
     return urls
 
 
-def _fetch_icon(url: str) -> tuple[bytes, str]:
+def _fetch_icon(url: str) -> tuple[bytes, str, str]:
     request = urllib.request.Request(
         url,
         headers={
@@ -222,7 +350,7 @@ def _fetch_icon(url: str) -> tuple[bytes, str]:
     if not _looks_like_image(data):
         raise ValueError("Icon response was not an image")
 
-    return data, _extension_from_response(url, content_type)
+    return data, _extension_from_response(url, content_type), content_type or ""
 
 
 def _fallback_svg(domain_key: str, hostname: str, label: str | None) -> Path:
@@ -247,41 +375,94 @@ def _fallback_svg(domain_key: str, hostname: str, label: str | None) -> Path:
     return path
 
 
-def _icon_response(path: Path, hostname: str, fetched: bool) -> dict[str, str | bool]:
+def _save_icon_file(domain_key: str, data: bytes, extension: str) -> tuple[Path, str]:
+    content_hash = hashlib.sha1(data).hexdigest()[:16]
+    path = LINK_ICON_DIR / f"{domain_key}-{content_hash}{extension}"
+    temp_path = LINK_ICON_DIR / f".{domain_key}.tmp"
+
+    if not path.exists():
+        temp_path.write_bytes(data)
+        shutil.move(str(temp_path), path)
+
+    return path, content_hash
+
+
+def _icon_response(href: str, path: Path, hostname: str, fetched: bool) -> dict[str, str | bool]:
     return {
         "domain": hostname,
-        "icon": f"/api/link-icons/files/{path.name}",
+        "icon": _stable_icon_url(href),
+        "file": f"/api/link-icons/files/{path.name}",
         "cached": True,
         "fetched": fetched,
     }
 
 
-def cache_link_icon(href: str, label: str | None = None, refresh: bool = False) -> dict[str, str | bool]:
+def resolve_link_icon_file(
+    href: str,
+    label: str | None = None,
+    refresh: bool = False,
+) -> Path:
     parsed = _normalize_href(href)
     hostname = (parsed.hostname or "").lower()
     domain_key = _domain_key(hostname)
     LINK_ICON_DIR.mkdir(parents=True, exist_ok=True)
+    existing = _existing_icon(domain_key)
 
-    if not refresh:
-        existing = _existing_icon(domain_key)
+    if existing and not refresh:
+        _upsert_registry(
+            domain_key=domain_key,
+            hostname=hostname,
+            path=existing,
+            source_url="local-cache",
+            content_type="",
+            content_hash=hashlib.sha1(existing.read_bytes()).hexdigest()[:16],
+        )
+        return existing
 
-        if existing:
-            return _icon_response(existing, hostname, fetched=False)
-    else:
-        for path in LINK_ICON_DIR.glob(f"{domain_key}.*"):
-            path.unlink(missing_ok=True)
+    last_error = ""
 
     for url in _candidate_urls(parsed):
         try:
-            data, extension = _fetch_icon(url)
-        except (OSError, urllib.error.URLError, ValueError):
+            data, extension, content_type = _fetch_icon(url)
+            path, content_hash = _save_icon_file(domain_key, data, extension)
+            _upsert_registry(
+                domain_key=domain_key,
+                hostname=hostname,
+                path=path,
+                source_url=url,
+                content_type=content_type,
+                content_hash=content_hash,
+            )
+            return path
+        except (OSError, urllib.error.URLError, ValueError) as exc:
+            last_error = str(exc)
             continue
 
-        path = LINK_ICON_DIR / f"{domain_key}{extension}"
-        temp_path = LINK_ICON_DIR / f".{domain_key}.tmp"
-        temp_path.write_bytes(data)
-        shutil.move(str(temp_path), path)
-        return _icon_response(path, hostname, fetched=True)
+    if existing:
+        _upsert_registry(
+            domain_key=domain_key,
+            hostname=hostname,
+            path=existing,
+            last_error=last_error,
+        )
+        return existing
 
     fallback = _fallback_svg(domain_key, hostname, label)
-    return _icon_response(fallback, hostname, fetched=False)
+    _upsert_registry(
+        domain_key=domain_key,
+        hostname=hostname,
+        path=fallback,
+        source_url="fallback",
+        content_type="image/svg+xml",
+        content_hash=hashlib.sha1(fallback.read_bytes()).hexdigest()[:16],
+        last_error=last_error,
+    )
+    return fallback
+
+
+def cache_link_icon(href: str, label: str | None = None, refresh: bool = False) -> dict[str, str | bool]:
+    parsed = _normalize_href(href)
+    hostname = (parsed.hostname or "").lower()
+    before = _existing_icon(_domain_key(hostname))
+    path = resolve_link_icon_file(href, label=label, refresh=refresh)
+    return _icon_response(href, path, hostname, fetched=before != path)

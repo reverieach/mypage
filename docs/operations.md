@@ -101,6 +101,29 @@ The frontend automatically syncs these user data groups:
 
 Settings has a Backup tab for backup status, JSON export/import, and restoring the latest snapshot. `localStorage` remains the fast browser cache; Agent SQLite is the trusted local backup.
 
+Link icons are not part of user config. They are derived Agent cache data in:
+
+```txt
+agent/app/data/link_icons.sqlite3
+agent/app/data/link-icons/
+```
+
+Check a link icon through the stable resolver:
+
+```powershell
+Invoke-WebRequest "http://127.0.0.1:3217/api/link-icons/resolve?href=https%3A%2F%2Fgithub.com"
+```
+
+Refresh a cached icon without changing link config:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/link-icons/cache `
+  -ContentType "application/json" `
+  -Body '{"href":"https://github.com","refresh":true}'
+```
+
+Do not store `/api/link-icons/files/...` URLs in links. Concrete icon files are cache internals.
+
 ## Homework Setup
 
 Default project path:
@@ -214,6 +237,7 @@ Ignored runtime files:
 ```txt
 agent/app/data/*.json
 agent/app/data/*.sqlite3
+agent/app/data/link-icons/
 agent/*.log
 frontend/dist/
 frontend/node_modules/
