@@ -7,6 +7,7 @@ import {
   type BackedUpConfig,
 } from '../../data/configBackup'
 import { appConfig } from '../../config/appConfig'
+import type { QuickLink } from '../../config/types'
 import {
   defaultUserConfig,
   useConfigStore,
@@ -47,6 +48,34 @@ function nonDefaultWallpaperCount(snapshot: UserConfigSnapshot) {
   return snapshot.wallpapers.filter((wallpaper) => !isDefaultWallpaper(wallpaper.src)).length
 }
 
+function linkKey(link: QuickLink) {
+  return link.href.trim().toLowerCase() || link.id
+}
+
+function linkIconCount(snapshot: UserConfigSnapshot) {
+  return snapshot.links.filter((link) => Boolean(link.icon)).length
+}
+
+function mergeLinks(local: QuickLink[], remote: QuickLink[]) {
+  const remoteByKey = new Map<string, QuickLink>()
+  const remoteById = new Map<string, QuickLink>()
+
+  for (const link of remote) {
+    remoteByKey.set(linkKey(link), link)
+    remoteById.set(link.id, link)
+  }
+
+  return local.map((link) => {
+    if (link.icon) {
+      return link
+    }
+
+    const remoteLink = remoteById.get(link.id) ?? remoteByKey.get(linkKey(link))
+
+    return remoteLink?.icon ? { ...link, icon: remoteLink.icon } : link
+  })
+}
+
 function hasRicherRemoteUserConfig(remote: UserConfigSnapshot, local: UserConfigSnapshot) {
   if (isDefaultWallpaper(local.wallpaper) && !isDefaultWallpaper(remote.wallpaper)) {
     return true
@@ -62,6 +91,10 @@ function hasRicherRemoteUserConfig(remote: UserConfigSnapshot, local: UserConfig
     return true
   }
 
+  if (linkIconCount(remote) > linkIconCount(local)) {
+    return true
+  }
+
   return !local.note && Boolean(remote.note)
 }
 
@@ -71,6 +104,9 @@ function mergeProtectiveBackup(local: BackedUpConfig, remote: BackedUpConfig): B
   const mergedWallpapers = mergeWallpapers(localUser.wallpapers, remoteUser.wallpapers)
   const localLooksDefaultLinks = localUser.links.length <= defaultUserConfig.links.length
   const useRemoteLinks = localLooksDefaultLinks && remoteUser.links.length > localUser.links.length
+  const mergedLinks = useRemoteLinks
+    ? remoteUser.links
+    : mergeLinks(localUser.links, remoteUser.links)
   const useRemoteWallpaper =
     isDefaultWallpaper(localUser.wallpaper) && !isDefaultWallpaper(remoteUser.wallpaper)
   const remoteLayoutsUpdatedAt = remote.layoutsUpdatedAt
@@ -84,7 +120,7 @@ function mergeProtectiveBackup(local: BackedUpConfig, remote: BackedUpConfig): B
       ...localUser,
       wallpaper: useRemoteWallpaper ? remoteUser.wallpaper : localUser.wallpaper,
       wallpapers: mergedWallpapers,
-      links: useRemoteLinks ? remoteUser.links : localUser.links,
+      links: mergedLinks,
       hiddenWidgetIds: localUser.hiddenWidgetIds.length
         ? localUser.hiddenWidgetIds
         : remoteUser.hiddenWidgetIds,

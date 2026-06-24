@@ -1,4 +1,3 @@
-import { ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 
 import { cn } from '../../utils/cn'
@@ -12,6 +11,7 @@ type LinkFaviconProps = {
 export function LinkFavicon({ icon, label, className }: LinkFaviconProps) {
   const [failedIcon, setFailedIcon] = useState<string | null>(null)
   const canShowIcon = Boolean(icon) && failedIcon !== icon
+  const fallbackLabel = label.trim().slice(0, 1).toUpperCase() || '?'
 
   return (
     <span
@@ -29,7 +29,9 @@ export function LinkFavicon({ icon, label, className }: LinkFaviconProps) {
           onError={() => setFailedIcon(icon ?? null)}
         />
       ) : (
-        <ExternalLink className="h-5 w-5" aria-hidden="true" />
+        <span className="text-sm font-semibold text-white/84" aria-hidden="true">
+          {fallbackLabel}
+        </span>
       )}
       <span className="sr-only">{label}</span>
     </span>

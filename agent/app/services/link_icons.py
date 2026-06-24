@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+from html.parser import HTMLParser
 import re
 import shutil
 import urllib.error
@@ -25,6 +26,36 @@ CONTENT_TYPE_EXTENSIONS = {
     "image/x-icon": ".ico",
     "image/vnd.microsoft.icon": ".ico",
 }
+
+
+class IconLinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.icons: list[tuple[int, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {key.lower(): value or "" for key, value in attrs}
+
+        if tag.lower() == "link":
+            rel = values.get("rel", "").lower()
+            href = values.get("href", "")
+
+            if not href:
+                return
+
+            if "apple-touch-icon" in rel:
+                self.icons.append((0, href))
+            elif "icon" in rel:
+                self.icons.append((1, href))
+            elif "mask-icon" in rel:
+                self.icons.append((3, href))
+
+        if tag.lower() == "meta":
+            name = values.get("property", values.get("name", "")).lower()
+            content = values.get("content", "")
+
+            if content and name in {"og:image", "twitter:image"}:
+                self.icons.append((2, content))
 
 
 def _normalize_href(href: str) -> urllib.parse.ParseResult:
@@ -53,8 +84,10 @@ def _domain_key(hostname: str) -> str:
 
 def _existing_icon(domain_key: str) -> Path | None:
     for path in sorted(LINK_ICON_DIR.glob(f"{domain_key}.*")):
-        if path.is_file():
+        if path.is_file() and _looks_like_image(path.read_bytes()):
             return path
+
+        path.unlink(missing_ok=True)
 
     return None
 
@@ -73,10 +106,79 @@ def _extension_from_response(url: str, content_type: str | None) -> str:
     return ".png"
 
 
+def _looks_like_image(data: bytes) -> bool:
+    prefix = data[:256].lstrip().lower()
+
+    return bool(
+        data.startswith(b"\x89PNG\r\n\x1a\n")
+        or data.startswith(b"\xff\xd8\xff")
+        or data.startswith(b"GIF87a")
+        or data.startswith(b"GIF89a")
+        or data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+        or data.startswith(b"\x00\x00\x01\x00")
+        or prefix.startswith(b"<svg")
+    )
+
+
+def _html_icon_candidates(parsed: urllib.parse.ParseResult) -> list[str]:
+    request = urllib.request.Request(
+        urllib.parse.urlunparse(parsed),
+        headers={
+            "Accept": "text/html,application/xhtml+xml",
+            "User-Agent": "Mozilla/5.0 MyPage/1.0 local favicon cache",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            content_type = response.headers.get("Content-Type", "")
+
+            if "html" not in content_type.lower():
+                return []
+
+            html_text = response.read(512 * 1024).decode("utf-8", "replace")
+    except (OSError, urllib.error.URLError, UnicodeDecodeError):
+        return []
+
+    parser = IconLinkParser()
+    parser.feed(html_text)
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    urls: list[str] = []
+
+    for _, href in sorted(parser.icons, key=lambda item: item[0]):
+        urls.append(urllib.parse.urljoin(root, html.unescape(href)))
+
+    return urls
+
+
+def _domain_specific_urls(host: str) -> list[str]:
+    if host in {"mail.qq.com", "wx.mail.qq.com"} or host.endswith(".mail.qq.com"):
+        return [
+            "https://rescdn.qqmail.com/zh_CN/htmledition/images/favicon/qqmail_favicon_96h.png",
+            "https://rescdn.qqmail.com/zh_CN/htmledition/images/favicon/qqmail_favicon_48h.png",
+            "https://mail.qq.com/favicon.ico",
+        ]
+
+    if host == "chat.deepseek.com":
+        return [
+            "https://cdn.deepseek.com/chat/icon.png",
+            "https://fe-static.deepseek.com/chat/favicon.svg",
+        ]
+
+    if host == "platform.deepseek.com":
+        return [
+            "https://fe-static.deepseek.com/platform/favicon.svg",
+        ]
+
+    return []
+
+
 def _candidate_urls(parsed: urllib.parse.ParseResult) -> list[str]:
     host = parsed.hostname or ""
     root = f"{parsed.scheme}://{parsed.netloc}"
     urls = [
+        *_domain_specific_urls(host.lower()),
+        *_html_icon_candidates(parsed),
         f"{root}/favicon.ico",
         f"{root}/apple-touch-icon.png",
         f"{root}/apple-touch-icon-precomposed.png",
@@ -116,6 +218,9 @@ def _fetch_icon(url: str) -> tuple[bytes, str]:
 
     if not data:
         raise ValueError("Icon response was empty")
+
+    if not _looks_like_image(data):
+        raise ValueError("Icon response was not an image")
 
     return data, _extension_from_response(url, content_type)
 
@@ -162,6 +267,9 @@ def cache_link_icon(href: str, label: str | None = None, refresh: bool = False) 
 
         if existing:
             return _icon_response(existing, hostname, fetched=False)
+    else:
+        for path in LINK_ICON_DIR.glob(f"{domain_key}.*"):
+            path.unlink(missing_ok=True)
 
     for url in _candidate_urls(parsed):
         try:
