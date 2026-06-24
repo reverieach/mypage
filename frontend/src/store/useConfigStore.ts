@@ -21,6 +21,9 @@ export type SavedWallpaper = {
   id: string
   label: string
   src: string
+  kind?: 'image' | 'video'
+  preview?: string
+  fallback?: string
 }
 
 type ConfigState = UserConfigSnapshot & {
@@ -60,6 +63,7 @@ export const defaultWallpapers: SavedWallpaper[] = [
     id: 'default-lake',
     label: 'Lake',
     src: appConfig.wallpaper,
+    kind: 'image',
   },
 ]
 

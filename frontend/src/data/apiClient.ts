@@ -45,3 +45,19 @@ export async function postAgentEnvelope<T>(
 
   return response.json() as Promise<AgentEnvelope<T>>
 }
+
+export async function postAgentFormEnvelope<T>(
+  endpoint: string,
+  formData: FormData,
+): Promise<AgentEnvelope<T>> {
+  const response = await fetch(resolveAgentUrl(endpoint), {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Agent returned ${response.status}`)
+  }
+
+  return response.json() as Promise<AgentEnvelope<T>>
+}

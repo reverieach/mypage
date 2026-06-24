@@ -1,6 +1,7 @@
 from typing import Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from app.sample_data import (
     AUTOMATION_DIGEST,
@@ -34,6 +35,7 @@ from app.services.user_config import (
     restore_config_snapshot,
     save_user_config,
 )
+from app.services.wallpapers import WALLPAPER_DIR, save_wallpaper_upload
 
 router = APIRouter(prefix="/api")
 
@@ -64,6 +66,34 @@ def config_snapshot_restore(snapshot_id: int) -> dict[str, Any]:
             stale=True,
             error=str(exc),
         )
+
+
+@router.post("/wallpapers/upload")
+def wallpaper_upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    try:
+        data = save_wallpaper_upload(
+            file.file,
+            file.filename or "wallpaper",
+            file.content_type,
+        )
+        return envelope(data, stale=False)
+    except ValueError as exc:
+        return envelope(
+            {"id": "", "label": "", "kind": "image", "src": ""},
+            stale=True,
+            error=str(exc),
+        )
+
+
+@router.get("/wallpapers/files/{file_name}")
+def wallpaper_file(file_name: str) -> FileResponse:
+    path = (WALLPAPER_DIR / file_name).resolve()
+    root = WALLPAPER_DIR.resolve()
+
+    if root not in path.parents or not path.exists():
+        raise HTTPException(status_code=404, detail="Wallpaper file not found")
+
+    return FileResponse(path)
 
 
 @router.get("/school/today")

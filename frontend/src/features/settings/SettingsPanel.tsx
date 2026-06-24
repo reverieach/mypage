@@ -29,15 +29,53 @@ import {
   type AgentConfigData,
   type BackedUpConfig,
 } from '../../data/configBackup'
+import { uploadWallpaper } from '../../data/wallpapers'
 import { useConfigStore } from '../../store/useConfigStore'
+import type { SavedWallpaper } from '../../store/useConfigStore'
 import { useLayoutStore } from '../../store/useLayoutStore'
 import { cn } from '../../utils/cn'
 
 type SettingsTab = 'wallpaper' | 'links' | 'widgets' | 'backup'
 
+function inferWallpaperKind(src: string): SavedWallpaper['kind'] {
+  return /\.(mp4|webm|mov)(\?|#|$)/i.test(src) ? 'video' : 'image'
+}
+
+function WallpaperPreview({
+  className,
+  wallpaper,
+}: {
+  className: string
+  wallpaper: SavedWallpaper
+}) {
+  if (wallpaper.kind === 'video') {
+    return (
+      <video
+        src={wallpaper.src}
+        poster={wallpaper.preview}
+        className={className}
+        autoPlay
+        muted
+        loop
+        playsInline
+      />
+    )
+  }
+
+  return (
+    <img
+      src={wallpaper.src}
+      alt=""
+      className={className}
+      draggable={false}
+    />
+  )
+}
+
 export function SettingsPanel() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('wallpaper')
   const [wallpaperDraft, setWallpaperDraft] = useState('')
+  const [wallpaperError, setWallpaperError] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<AgentConfigData | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
   const wallpaper = useConfigStore((state) => state.wallpaper)
@@ -205,11 +243,45 @@ export function SettingsPanel() {
     }
   }
 
-  function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
+  const activeWallpaper = wallpapers.find((item) => item.src === wallpaper) ?? {
+    id: 'active-wallpaper',
+    label: 'Wallpaper',
+    kind: inferWallpaperKind(wallpaper),
+    src: wallpaper,
+  }
+
+  async function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
+    event.target.value = ''
 
     if (!file) {
       return
+    }
+
+    setWallpaperError(null)
+
+    try {
+      const envelope = await uploadWallpaper(file)
+
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+
+      addWallpaper({
+        label: envelope.data.label,
+        src: envelope.data.src,
+        kind: envelope.data.kind,
+        preview: envelope.data.preview,
+        fallback: envelope.data.fallback,
+      })
+      return
+    } catch (error) {
+      if (file.type.startsWith('video/')) {
+        setWallpaperError(
+          error instanceof Error ? error.message : 'Video upload failed',
+        )
+        return
+      }
     }
 
     const reader = new FileReader()
@@ -218,6 +290,7 @@ export function SettingsPanel() {
         addWallpaper({
           label: file.name.replace(/\.[^.]+$/, '') || 'Wallpaper',
           src: reader.result,
+          kind: 'image',
         })
       }
     })
@@ -269,11 +342,9 @@ export function SettingsPanel() {
         {activeTab === 'wallpaper' ? (
           <div className="space-y-4">
             <div className="overflow-hidden rounded-3xl border border-white/12 bg-white/10">
-              <img
-                src={wallpaper}
-                alt=""
+              <WallpaperPreview
+                wallpaper={activeWallpaper}
                 className="aspect-video w-full object-cover"
-                draggable={false}
               />
             </div>
 
@@ -288,11 +359,9 @@ export function SettingsPanel() {
                     className="block w-full text-left transition hover:opacity-90"
                     onClick={() => setWallpaper(item.src)}
                   >
-                    <img
-                      src={item.src}
-                      alt=""
+                    <WallpaperPreview
+                      wallpaper={item}
                       className="aspect-video w-full object-cover"
-                      draggable={false}
                     />
                     <span className="block truncate px-3 py-2 text-xs font-medium text-white/72">
                       {item.label}
@@ -333,6 +402,7 @@ export function SettingsPanel() {
                       addWallpaper({
                         label: 'Custom',
                         src: wallpaperDraft.trim(),
+                        kind: inferWallpaperKind(wallpaperDraft.trim()),
                       })
                       setWallpaperDraft('')
                     }
@@ -345,14 +415,17 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-full border border-white/14 bg-white/10 px-4 py-3 text-sm font-medium text-white/74 transition hover:bg-white/16">
               <Image className="h-4 w-4" aria-hidden="true" />
-              Choose image
+              Choose image or video
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,video/mp4,video/webm,video/quicktime"
                 className="hidden"
-                onChange={handleWallpaperFile}
+                onChange={(event) => void handleWallpaperFile(event)}
               />
             </label>
+            {wallpaperError ? (
+              <p className="text-xs text-rose-100/80">{wallpaperError}</p>
+            ) : null}
 
             <Button variant="ghost" onClick={resetWallpapers}>
               <RotateCcw className="h-4 w-4" aria-hidden="true" />
