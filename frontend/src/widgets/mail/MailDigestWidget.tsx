@@ -1,7 +1,7 @@
-import { ExternalLink, Mail, RefreshCw, X } from 'lucide-react'
-import { useState } from 'react'
+import { ExternalLink, Mail, X } from 'lucide-react'
 
-import { Button } from '../../components/ui/button'
+import { RefreshStatusButton } from '../../components/ui/refresh-status-button'
+import { useRefreshFeedback } from '../../components/ui/useRefreshFeedback'
 import type { DataWidgetConfig } from '../../config/types'
 import { postAgentEnvelope } from '../../data/apiClient'
 import { type MailSummaryData, useAgentWidget } from '../../data/widgetData'
@@ -40,17 +40,18 @@ function importanceClass(importance: MailSummaryData['items'][number]['importanc
 
 export function MailDigestWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<MailSummaryData>(config)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const refresh = useRefreshFeedback()
 
   async function refreshMail() {
-    setIsRefreshing(true)
+    void refresh.runRefresh(async () => {
+      const envelope = await postAgentEnvelope('/api/mail/refresh')
 
-    try {
-      await postAgentEnvelope('/api/mail/refresh')
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+
       await query.refetch()
-    } finally {
-      setIsRefreshing(false)
-    }
+    })
   }
 
   async function dismissMail(id: string) {
@@ -81,18 +82,12 @@ export function MailDigestWidget({ config }: { config: DataWidgetConfig }) {
               : 'Mail not configured'}
           </span>
         </div>
-        <Button
-          aria-label="Refresh mail"
-          size="icon"
-          variant="ghost"
+        <RefreshStatusButton
+          disabled={refresh.isRefreshing}
+          label="Refresh mail"
           onClick={refreshMail}
-          disabled={isRefreshing}
-        >
-          <RefreshCw
-            className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
-            aria-hidden="true"
-          />
-        </Button>
+          status={refresh.status}
+        />
       </div>
 
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">

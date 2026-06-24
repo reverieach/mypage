@@ -1,7 +1,7 @@
-import { CalendarClock, ExternalLink, RefreshCw, School, X } from 'lucide-react'
-import { useState } from 'react'
+import { CalendarClock, ExternalLink, School, X } from 'lucide-react'
 
-import { Button } from '../../components/ui/button'
+import { RefreshStatusButton } from '../../components/ui/refresh-status-button'
+import { useRefreshFeedback } from '../../components/ui/useRefreshFeedback'
 import type { DataWidgetConfig } from '../../config/types'
 import { postAgentEnvelope } from '../../data/apiClient'
 import { type SchoolNoticesData, useAgentWidget } from '../../data/widgetData'
@@ -44,17 +44,18 @@ function importanceClass(
 
 export function SchoolNoticesWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<SchoolNoticesData>(config)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const refresh = useRefreshFeedback()
 
   async function refreshNotices() {
-    setIsRefreshing(true)
+    void refresh.runRefresh(async () => {
+      const envelope = await postAgentEnvelope('/api/school/notices/refresh')
 
-    try {
-      await postAgentEnvelope('/api/school/notices/refresh')
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+
       await query.refetch()
-    } finally {
-      setIsRefreshing(false)
-    }
+    })
   }
 
   async function dismissNotice(id: string) {
@@ -82,18 +83,12 @@ export function SchoolNoticesWidget({ config }: { config: DataWidgetConfig }) {
             {data.hiddenCount ? ` · ${data.hiddenCount} hidden` : ''}
           </span>
         </div>
-        <Button
-          aria-label="Refresh school notices"
-          size="icon"
-          variant="ghost"
+        <RefreshStatusButton
+          disabled={refresh.isRefreshing}
+          label="Refresh school notices"
           onClick={refreshNotices}
-          disabled={isRefreshing}
-        >
-          <RefreshCw
-            className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
-            aria-hidden="true"
-          />
-        </Button>
+          status={refresh.status}
+        />
       </div>
 
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">

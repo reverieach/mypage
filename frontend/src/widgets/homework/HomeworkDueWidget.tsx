@@ -1,7 +1,7 @@
-import { Clock3, NotebookTabs, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { Clock3, NotebookTabs } from 'lucide-react'
 
-import { Button } from '../../components/ui/button'
+import { RefreshStatusButton } from '../../components/ui/refresh-status-button'
+import { useRefreshFeedback } from '../../components/ui/useRefreshFeedback'
 import type { DataWidgetConfig } from '../../config/types'
 import { postAgentEnvelope } from '../../data/apiClient'
 import { type HomeworkDueData, useAgentWidget } from '../../data/widgetData'
@@ -24,17 +24,18 @@ function formatDeadline(value: string) {
 
 export function HomeworkDueWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<HomeworkDueData>(config)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const refresh = useRefreshFeedback()
 
   async function refreshHomework() {
-    setIsRefreshing(true)
+    void refresh.runRefresh(async () => {
+      const envelope = await postAgentEnvelope('/api/homework/refresh')
 
-    try {
-      await postAgentEnvelope('/api/homework/refresh')
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+
       await query.refetch()
-    } finally {
-      setIsRefreshing(false)
-    }
+    })
   }
 
   if (query.isLoading) {
@@ -56,18 +57,12 @@ export function HomeworkDueWidget({ config }: { config: DataWidgetConfig }) {
             {assignments.length} due · {query.data.data.windowLabel}
           </span>
         </div>
-        <Button
-          aria-label="Refresh homework"
-          size="icon"
-          variant="ghost"
+        <RefreshStatusButton
+          disabled={refresh.isRefreshing}
+          label="Refresh homework"
           onClick={refreshHomework}
-          disabled={isRefreshing}
-        >
-          <RefreshCw
-            className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
-            aria-hidden="true"
-          />
-        </Button>
+          status={refresh.status}
+        />
       </div>
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         {assignments.length ? (

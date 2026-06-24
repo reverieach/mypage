@@ -19,6 +19,8 @@ import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 
 import { Button } from '../../components/ui/button'
+import { RefreshStatusButton } from '../../components/ui/refresh-status-button'
+import { useRefreshFeedback } from '../../components/ui/useRefreshFeedback'
 import {
   DialogContent,
   DialogDescription,
@@ -105,6 +107,7 @@ export function SettingsPanel() {
   const [wallpaperError, setWallpaperError] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<AgentConfigData | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
+  const backupRefresh = useRefreshFeedback()
   const wallpaper = useConfigStore((state) => state.wallpaper)
   const wallpapers = useConfigStore((state) => state.wallpapers)
   const randomWallpaperEnabled = useConfigStore(
@@ -158,8 +161,16 @@ export function SettingsPanel() {
       const envelope = await loadAgentConfig()
       setBackupStatus(envelope.data)
       setBackupError(envelope.error)
-    } catch {
-      setBackupError('Agent backup is unavailable')
+
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Agent backup is unavailable'
+
+      setBackupError(message)
+      throw error
     }
   }
 
@@ -362,7 +373,9 @@ export function SettingsPanel() {
                 setActiveTab(tab.id as SettingsTab)
 
                 if (tab.id === 'backup') {
-                  void refreshBackupStatus()
+                  void refreshBackupStatus().catch(() => {
+                    // Manual refresh uses the status button for visible feedback.
+                  })
                 }
               }}
             >
@@ -647,10 +660,11 @@ export function SettingsPanel() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="ghost" onClick={() => void refreshBackupStatus()}>
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                Refresh
-              </Button>
+              <RefreshStatusButton
+                label="Refresh backup"
+                onClick={() => void backupRefresh.runRefresh(refreshBackupStatus)}
+                status={backupRefresh.status}
+              />
               <Button variant="ghost" onClick={() => void restoreLatestSnapshot()}>
                 <RotateCcw className="h-4 w-4" aria-hidden="true" />
                 Restore latest
