@@ -1,4 +1,5 @@
 from typing import Any
+from pathlib import Path
 
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -118,6 +119,19 @@ def link_icon_cache(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 def link_icon_file(file_name: str) -> FileResponse:
     path = (LINK_ICON_DIR / file_name).resolve()
     root = LINK_ICON_DIR.resolve()
+
+    if root not in path.parents:
+        raise HTTPException(status_code=404, detail="Link icon not found")
+
+    if not path.exists():
+        path = next(
+            (
+                candidate.resolve()
+                for candidate in LINK_ICON_DIR.glob(f"{Path(file_name).stem}.*")
+                if candidate.is_file()
+            ),
+            path,
+        )
 
     if root not in path.parents or not path.exists():
         raise HTTPException(status_code=404, detail="Link icon not found")

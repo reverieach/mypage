@@ -56,6 +56,21 @@ function linkIconCount(snapshot: UserConfigSnapshot) {
   return snapshot.links.filter((link) => Boolean(link.icon)).length
 }
 
+function hasRemoteIconUpdates(remote: UserConfigSnapshot, local: UserConfigSnapshot) {
+  const localByKey = new Map(local.links.map((link) => [linkKey(link), link]))
+  const localById = new Map(local.links.map((link) => [link.id, link]))
+
+  return remote.links.some((remoteLink) => {
+    if (!remoteLink.icon) {
+      return false
+    }
+
+    const localLink = localById.get(remoteLink.id) ?? localByKey.get(linkKey(remoteLink))
+
+    return Boolean(localLink && localLink.icon !== remoteLink.icon)
+  })
+}
+
 function mergeLinks(local: QuickLink[], remote: QuickLink[]) {
   const remoteByKey = new Map<string, QuickLink>()
   const remoteById = new Map<string, QuickLink>()
@@ -66,10 +81,6 @@ function mergeLinks(local: QuickLink[], remote: QuickLink[]) {
   }
 
   return local.map((link) => {
-    if (link.icon) {
-      return link
-    }
-
     const remoteLink = remoteById.get(link.id) ?? remoteByKey.get(linkKey(link))
 
     return remoteLink?.icon ? { ...link, icon: remoteLink.icon } : link
@@ -92,6 +103,10 @@ function hasRicherRemoteUserConfig(remote: UserConfigSnapshot, local: UserConfig
   }
 
   if (linkIconCount(remote) > linkIconCount(local)) {
+    return true
+  }
+
+  if (hasRemoteIconUpdates(remote, local)) {
     return true
   }
 

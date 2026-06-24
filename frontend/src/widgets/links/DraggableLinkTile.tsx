@@ -1,6 +1,6 @@
 import { GripVertical } from 'lucide-react'
 import type { DragEvent } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import type { QuickLink } from '../../config/types'
 import { cacheLinkIcon } from '../../data/linkIcons'
@@ -23,6 +23,7 @@ export function DraggableLinkTile({
 }: DraggableLinkTileProps) {
   const moveLinkToIndex = useConfigStore((state) => state.moveLinkToIndex)
   const updateLink = useConfigStore((state) => state.updateLink)
+  const retriedIconRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (link.icon) {
@@ -60,6 +61,24 @@ export function DraggableLinkTile({
     }
   }
 
+  function refreshBrokenIcon() {
+    if (!link.icon || retriedIconRef.current === link.icon) {
+      return
+    }
+
+    retriedIconRef.current = link.icon
+
+    void cacheLinkIcon(link.href, link.label, true)
+      .then((envelope) => {
+        if (envelope.data.icon && envelope.data.icon !== link.icon) {
+          updateLink(link.id, { icon: envelope.data.icon })
+        }
+      })
+      .catch(() => {
+        // The letter fallback remains available if a site has no usable icon.
+      })
+  }
+
   return (
     <a
       draggable
@@ -75,7 +94,11 @@ export function DraggableLinkTile({
       onDrop={handleDrop}
     >
       <GripVertical className="absolute right-1.5 top-1.5 h-3.5 w-3.5 text-white/0 transition group-hover:text-white/42" />
-      <LinkFavicon icon={link.icon} label={link.label} />
+      <LinkFavicon
+        icon={link.icon}
+        label={link.label}
+        onIconError={refreshBrokenIcon}
+      />
       <span className="w-full truncate text-xs font-medium text-white/82">
         {link.label}
       </span>

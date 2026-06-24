@@ -6,9 +6,15 @@ type LinkFaviconProps = {
   icon?: string
   label: string
   className?: string
+  onIconError?: () => void
 }
 
-export function LinkFavicon({ icon, label, className }: LinkFaviconProps) {
+export function LinkFavicon({
+  icon,
+  label,
+  className,
+  onIconError,
+}: LinkFaviconProps) {
   const [failedIcon, setFailedIcon] = useState<string | null>(null)
   const canShowIcon = Boolean(icon) && failedIcon !== icon
   const fallbackLabel = label.trim().slice(0, 1).toUpperCase() || '?'
@@ -26,7 +32,10 @@ export function LinkFavicon({ icon, label, className }: LinkFaviconProps) {
           alt=""
           className="h-6 w-6 rounded-md"
           draggable={false}
-          onError={() => setFailedIcon(icon ?? null)}
+          onError={() => {
+            setFailedIcon(icon ?? null)
+            onIconError?.()
+          }}
         />
       ) : (
         <span className="text-sm font-semibold text-white/84" aria-hidden="true">
