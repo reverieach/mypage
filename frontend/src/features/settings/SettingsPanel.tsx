@@ -410,10 +410,10 @@ export function SettingsPanel() {
                 >
                   <span
                     className={cn(
-                      'absolute top-1 h-5 w-5 rounded-full bg-white shadow-soft transition-transform',
+                      'absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-soft transition-transform',
                       randomWallpaperEnabled
                         ? 'translate-x-5'
-                        : 'translate-x-1',
+                        : 'translate-x-0',
                     )}
                   />
                 </button>
