@@ -12,12 +12,14 @@ HOMEWORK_PROJECT_DIR = Path(os.getenv("HOMEWORK_PROJECT_DIR", "E:/作业获取�
 HOMEWORK_DB_PATH = HOMEWORK_PROJECT_DIR / "homework_db.json"
 HOMEWORK_REFRESH_TIMEOUT_SECONDS = int(os.getenv("HOMEWORK_REFRESH_TIMEOUT_SECONDS", "180"))
 SILENT_HOMEWORK_REFRESH_SCRIPT = r"""
+from datetime import datetime, timedelta, timezone
 from dataclasses import replace
 
 from capture_headers import capture_valid_headers
 from config import load_settings
 from monitor_core import (
     AuthExpiredError,
+    _assignment_id,
     _inject_course_names,
     analyze_assignments,
     enrich_homework_content,
@@ -26,6 +28,60 @@ from monitor_core import (
     load_state,
     save_state,
 )
+
+LOCAL_TZ = timezone(timedelta(hours=8))
+
+
+def _parse_deadline(value):
+    if not isinstance(value, str) or not value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=LOCAL_TZ)
+
+    return parsed.astimezone(LOCAL_TZ)
+
+
+def _is_completed(info):
+    status = str(info.get("status", "")).lower()
+    return bool(
+        info.get("completed")
+        or info.get("done")
+        or info.get("finished")
+        or status in {"done", "completed", "finished", "submitted"}
+    )
+
+
+def mark_missing_undone_as_completed(undone_list, state):
+    current_ids = {
+        aid
+        for aid in (_assignment_id(item) for item in undone_list)
+        if aid
+    }
+    now = datetime.now(LOCAL_TZ)
+    completed_count = 0
+
+    for aid, info in state.known_assignments.items():
+        if aid in current_ids or not isinstance(info, dict) or _is_completed(info):
+            continue
+
+        deadline = _parse_deadline(info.get("deadline"))
+
+        if deadline is None or deadline < now:
+            continue
+
+        info["completed"] = True
+        info["status"] = "completed"
+        info["completed_at"] = now.isoformat(timespec="seconds")
+        info["completion_source"] = "missing-from-undone-list"
+        completed_count += 1
+
+    return completed_count
 
 
 def run_once():
@@ -53,18 +109,20 @@ def run_once():
         print(f"[warn] homework content fetch failed, continuing without: {exc}")
 
     events = analyze_assignments(undone_list, state, settings)
+    completed_count = mark_missing_undone_as_completed(undone_list, state)
     save_state(settings.state_file, state)
-    return events
+    return events, completed_count
 
 
 try:
-    events = run_once()
+    events, completed_count = run_once()
 except AuthExpiredError:
     print("[warn] auth expired, refreshing headers once...")
     capture_valid_headers()
-    events = run_once()
+    events, completed_count = run_once()
 
 print(f"[ok] homework data refreshed; suppressed {len(events)} notification event(s).")
+print(f"[ok] marked {completed_count} assignment(s) completed from latest undone list.")
 """
 
 
