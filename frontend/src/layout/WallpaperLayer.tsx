@@ -12,7 +12,7 @@ export function WallpaperLayer({ kind = 'image', preview, src }: WallpaperLayerP
           key={src}
           src={src}
           poster={preview}
-          className="h-full w-full scale-105 object-cover"
+          className="h-full w-full object-cover"
           autoPlay
           muted
           loop
@@ -27,7 +27,7 @@ export function WallpaperLayer({ kind = 'image', preview, src }: WallpaperLayerP
         />
       )}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.28),rgba(15,23,42,0.2)_38%,rgba(15,23,42,0.58)_100%)]" />
-      <div className="absolute inset-0 backdrop-blur-[1px]" />
+      {kind !== 'video' ? <div className="absolute inset-0 backdrop-blur-[1px]" /> : null}
     </div>
   )
 }
