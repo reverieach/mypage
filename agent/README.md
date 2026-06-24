@@ -89,4 +89,6 @@ Main endpoints:
 - `POST /api/school/notices/refresh`
 - `POST /api/school/notices/{notice_id}/dismiss`
 
-The notice service fetches the BUPT notice list, filters for student-relevant items, and stores dismissed notice ids locally. It can reuse saved BUPT auth headers from the homework project.
+The notice service fetches the BUPT notice list, filters for student-relevant items, and stores dismissed notice ids locally.
+
+It does not use the homework project's `valid_headers.json` for portal auth: those headers belong to the ucloud homework API. School notices use `app/data/school_portal_cookies.json` for `my.bupt.edu.cn` cookies, and refresh those cookies through a Playwright portal login when needed.

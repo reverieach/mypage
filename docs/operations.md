@@ -190,7 +190,7 @@ Common environment variables:
 
 ```txt
 SCHOOL_NOTICE_URL
-SCHOOL_NOTICE_HEADER_FILE
+SCHOOL_NOTICE_COOKIE_PATH
 ```
 
 Manual read and refresh:
@@ -200,7 +200,12 @@ Invoke-RestMethod http://127.0.0.1:3217/api/school/notices
 Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/school/notices/refresh
 ```
 
-If auth fails, refresh saved headers in `E:\作业获取项目` first.
+Auth notes:
+
+- Homework `valid_headers.json` is for ucloud/apiucloud homework APIs and does not authenticate `my.bupt.edu.cn`.
+- School notices use `agent/app/data/school_portal_cookies.json` by default, or `SCHOOL_NOTICE_COOKIE_PATH` when set.
+- If portal cookies are missing or expired, manual refresh may use Playwright to log into the BUPT portal and capture a fresh `JSESSIONID`.
+- If Playwright reports a missing browser executable, run `.\.venv\Scripts\python.exe -m playwright install chromium` from `E:\mypage\agent`.
 
 ## Local Data
 
@@ -240,8 +245,9 @@ Homework refresh stale:
 
 School notices stale:
 
-- confirm `SCHOOL_NOTICE_HEADER_FILE` points to valid saved headers
-- refresh headers in the homework project if the BUPT portal auth expires
+- confirm `agent/app/data/school_portal_cookies.json` exists and is recent
+- run `/api/school/notices/refresh` to refresh portal cookies when they expire
+- install Playwright Chromium if the refresh path reports a missing browser executable
 - dismiss unwanted notices from the frontend instead of editing cache files manually
 
 Widget restored too small or in the wrong place:

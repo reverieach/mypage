@@ -208,7 +208,9 @@ Manual refresh uses a silent inline wrapper around the homework project's core f
 
 ### School Notices
 
-School notices are fetched from the BUPT portal notice list. The Agent can reuse saved auth headers from the homework project through `SCHOOL_NOTICE_HEADER_FILE`.
+School notices are fetched from the BUPT portal notice list. This is separate from the ucloud homework API: `E:\作业获取项目\valid_headers.json` contains `blade-auth` / `authorization` headers for homework requests and cannot directly authenticate `my.bupt.edu.cn`.
+
+The Agent stores portal cookies in `agent/app/data/school_portal_cookies.json`. When those cookies are missing or expired, the current implementation reuses the homework project's login-form helper and Playwright to log into the BUPT portal and capture a fresh `JSESSIONID`.
 
 The service parses notice links, extracts dates and detail text, scores relevance for student-facing notices, hides low relevance items, and stores dismiss state locally under `agent/app/data/`.
 
