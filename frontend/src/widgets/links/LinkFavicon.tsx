@@ -4,23 +4,14 @@ import { useState } from 'react'
 import { cn } from '../../utils/cn'
 
 type LinkFaviconProps = {
-  href: string
+  icon?: string
   label: string
   className?: string
 }
 
-function getFaviconUrl(href: string) {
-  try {
-    const url = new URL(href)
-    return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`
-  } catch {
-    return null
-  }
-}
-
-export function LinkFavicon({ href, label, className }: LinkFaviconProps) {
-  const [failed, setFailed] = useState(false)
-  const favicon = getFaviconUrl(href)
+export function LinkFavicon({ icon, label, className }: LinkFaviconProps) {
+  const [failedIcon, setFailedIcon] = useState<string | null>(null)
+  const canShowIcon = Boolean(icon) && failedIcon !== icon
 
   return (
     <span
@@ -29,13 +20,13 @@ export function LinkFavicon({ href, label, className }: LinkFaviconProps) {
         className,
       )}
     >
-      {favicon && !failed ? (
+      {canShowIcon ? (
         <img
-          src={favicon}
+          src={icon}
           alt=""
           className="h-6 w-6 rounded-md"
           draggable={false}
-          onError={() => setFailed(true)}
+          onError={() => setFailedIcon(icon ?? null)}
         />
       ) : (
         <ExternalLink className="h-5 w-5" aria-hidden="true" />

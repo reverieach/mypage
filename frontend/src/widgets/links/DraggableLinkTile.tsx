@@ -1,7 +1,9 @@
 import { GripVertical } from 'lucide-react'
 import type { DragEvent } from 'react'
+import { useEffect } from 'react'
 
 import type { QuickLink } from '../../config/types'
+import { cacheLinkIcon } from '../../data/linkIcons'
 import { useConfigStore } from '../../store/useConfigStore'
 import { cn } from '../../utils/cn'
 import { LinkFavicon } from './LinkFavicon'
@@ -20,6 +22,29 @@ export function DraggableLinkTile({
   fit = false,
 }: DraggableLinkTileProps) {
   const moveLinkToIndex = useConfigStore((state) => state.moveLinkToIndex)
+  const updateLink = useConfigStore((state) => state.updateLink)
+
+  useEffect(() => {
+    if (link.icon) {
+      return
+    }
+
+    let cancelled = false
+
+    void cacheLinkIcon(link.href, link.label)
+      .then((envelope) => {
+        if (!cancelled && envelope.data.icon) {
+          updateLink(link.id, { icon: envelope.data.icon })
+        }
+      })
+      .catch(() => {
+        // The text fallback keeps links usable when the local Agent is offline.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [link.href, link.icon, link.id, link.label, updateLink])
 
   function handleDragStart(event: DragEvent<HTMLAnchorElement>) {
     event.dataTransfer.effectAllowed = 'move'
@@ -50,7 +75,7 @@ export function DraggableLinkTile({
       onDrop={handleDrop}
     >
       <GripVertical className="absolute right-1.5 top-1.5 h-3.5 w-3.5 text-white/0 transition group-hover:text-white/42" />
-      <LinkFavicon href={link.href} label={link.label} />
+      <LinkFavicon icon={link.icon} label={link.label} />
       <span className="w-full truncate text-xs font-medium text-white/82">
         {link.label}
       </span>
