@@ -7,7 +7,12 @@ import {
   type BackedUpConfig,
 } from '../../data/configBackup'
 import { appConfig } from '../../config/appConfig'
-import { useConfigStore, type UserConfigSnapshot } from '../../store/useConfigStore'
+import {
+  defaultUserConfig,
+  useConfigStore,
+  type SavedWallpaper,
+  type UserConfigSnapshot,
+} from '../../store/useConfigStore'
 import { useLayoutStore } from '../../store/useLayoutStore'
 
 const legacyNoteKey = 'mypage-sticky-note'
@@ -15,6 +20,84 @@ const saveDelayMs = 900
 
 function maxTimestamp(...values: Array<string | null | undefined>) {
   return values.filter((value): value is string => Boolean(value)).sort().at(-1) ?? null
+}
+
+function isDefaultWallpaper(src: string | null | undefined) {
+  return !src || src === appConfig.wallpaper || src.endsWith('/wallpapers/default.png')
+}
+
+function mergeWallpapers(local: SavedWallpaper[], remote: SavedWallpaper[]) {
+  const bySrc = new Map<string, SavedWallpaper>()
+
+  for (const wallpaper of [...local, ...remote]) {
+    if (!wallpaper.src) {
+      continue
+    }
+
+    bySrc.set(wallpaper.src, {
+      ...bySrc.get(wallpaper.src),
+      ...wallpaper,
+    })
+  }
+
+  return Array.from(bySrc.values())
+}
+
+function nonDefaultWallpaperCount(snapshot: UserConfigSnapshot) {
+  return snapshot.wallpapers.filter((wallpaper) => !isDefaultWallpaper(wallpaper.src)).length
+}
+
+function hasRicherRemoteUserConfig(remote: UserConfigSnapshot, local: UserConfigSnapshot) {
+  if (isDefaultWallpaper(local.wallpaper) && !isDefaultWallpaper(remote.wallpaper)) {
+    return true
+  }
+
+  if (nonDefaultWallpaperCount(remote) > nonDefaultWallpaperCount(local)) {
+    return true
+  }
+
+  const localLooksDefaultLinks = local.links.length <= defaultUserConfig.links.length
+
+  if (localLooksDefaultLinks && remote.links.length > local.links.length) {
+    return true
+  }
+
+  return !local.note && Boolean(remote.note)
+}
+
+function mergeProtectiveBackup(local: BackedUpConfig, remote: BackedUpConfig): BackedUpConfig {
+  const localUser = local.userConfig
+  const remoteUser = remote.userConfig
+  const mergedWallpapers = mergeWallpapers(localUser.wallpapers, remoteUser.wallpapers)
+  const localLooksDefaultLinks = localUser.links.length <= defaultUserConfig.links.length
+  const useRemoteLinks = localLooksDefaultLinks && remoteUser.links.length > localUser.links.length
+  const useRemoteWallpaper =
+    isDefaultWallpaper(localUser.wallpaper) && !isDefaultWallpaper(remoteUser.wallpaper)
+  const remoteLayoutsUpdatedAt = remote.layoutsUpdatedAt
+  const localLayoutsUpdatedAt = local.layoutsUpdatedAt
+  const useRemoteLayouts =
+    Boolean(remoteLayoutsUpdatedAt) &&
+    (!localLayoutsUpdatedAt || remoteLayoutsUpdatedAt! > localLayoutsUpdatedAt)
+
+  return {
+    userConfig: {
+      ...localUser,
+      wallpaper: useRemoteWallpaper ? remoteUser.wallpaper : localUser.wallpaper,
+      wallpapers: mergedWallpapers,
+      links: useRemoteLinks ? remoteUser.links : localUser.links,
+      hiddenWidgetIds: localUser.hiddenWidgetIds.length
+        ? localUser.hiddenWidgetIds
+        : remoteUser.hiddenWidgetIds,
+      note: localUser.note || remoteUser.note,
+      searchEngineId:
+        localUser.searchEngineId === defaultUserConfig.searchEngineId
+          ? remoteUser.searchEngineId
+          : localUser.searchEngineId,
+      updatedAt: maxTimestamp(localUser.updatedAt, remoteUser.updatedAt, new Date().toISOString()),
+    },
+    layouts: useRemoteLayouts ? remote.layouts : local.layouts,
+    layoutsUpdatedAt: useRemoteLayouts ? remote.layoutsUpdatedAt : local.layoutsUpdatedAt,
+  }
 }
 
 function currentUserConfig(): UserConfigSnapshot {
@@ -86,6 +169,15 @@ export function ConfigBackupSync() {
         if (remote && (!localUpdatedAt || (remoteUpdatedAt && remoteUpdatedAt > localUpdatedAt))) {
           restoringRef.current = true
           applyBackupConfig(remote)
+          window.setTimeout(() => {
+            restoringRef.current = false
+          }, 0)
+        } else if (remote && hasRicherRemoteUserConfig(remote.userConfig, localConfig.userConfig)) {
+          const mergedConfig = mergeProtectiveBackup(localConfig, remote)
+
+          restoringRef.current = true
+          applyBackupConfig(mergedConfig)
+          await saveAgentConfig(mergedConfig, 'bootstrap-protective-merge')
           window.setTimeout(() => {
             restoringRef.current = false
           }, 0)
