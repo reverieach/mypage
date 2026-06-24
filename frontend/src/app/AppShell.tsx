@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 import { useEffectiveConfig } from '../config/useEffectiveConfig'
+import { deriveWallpaperPreview } from '../data/wallpapers'
 import { SearchBar } from '../features/search/SearchBar'
 import { SettingsButton } from '../features/settings/SettingsButton'
 import { ClockDisplay } from '../features/time/ClockDisplay'
@@ -18,13 +19,18 @@ export function AppShell() {
     (item) => item.src === config.wallpaper,
   )
   const theme = getTheme(config.theme)
+  const wallpaperPreview =
+    selectedWallpaper?.preview ??
+    (selectedWallpaper?.kind === 'video'
+      ? deriveWallpaperPreview(config.wallpaper)
+      : undefined)
 
   return (
     <main className={theme.className}>
       <WallpaperLayer
         src={config.wallpaper}
         kind={selectedWallpaper?.kind}
-        preview={selectedWallpaper?.preview}
+        preview={wallpaperPreview}
       />
       <SettingsButton
         contentHidden={contentHidden}

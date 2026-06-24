@@ -42,8 +42,13 @@ from app.services.user_config import (
     restore_config_snapshot,
     save_user_config,
 )
-from app.services.wallpapers import WALLPAPER_DIR, save_wallpaper_upload
-from app.services.wallpapers import WALLPAPER_CACHE_HEADERS, wallpaper_media_type
+from app.services.wallpapers import (
+    WALLPAPER_CACHE_HEADERS,
+    WALLPAPER_DIR,
+    ensure_wallpaper_preview,
+    save_wallpaper_upload,
+    wallpaper_media_type,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -104,6 +109,26 @@ def wallpaper_file(file_name: str) -> FileResponse:
     return FileResponse(
         path,
         media_type=wallpaper_media_type(path),
+        headers=WALLPAPER_CACHE_HEADERS,
+    )
+
+
+@router.get("/wallpapers/posters/{file_name}")
+def wallpaper_poster(file_name: str) -> FileResponse:
+    path = (WALLPAPER_DIR / file_name).resolve()
+    root = WALLPAPER_DIR.resolve()
+
+    if root not in path.parents or not path.exists():
+        raise HTTPException(status_code=404, detail="Wallpaper file not found")
+
+    poster_path = ensure_wallpaper_preview(path)
+
+    if not poster_path:
+        raise HTTPException(status_code=404, detail="Wallpaper poster not found")
+
+    return FileResponse(
+        poster_path,
+        media_type="image/jpeg",
         headers=WALLPAPER_CACHE_HEADERS,
     )
 

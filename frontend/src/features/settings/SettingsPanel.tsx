@@ -29,7 +29,7 @@ import {
   type AgentConfigData,
   type BackedUpConfig,
 } from '../../data/configBackup'
-import { uploadWallpaper } from '../../data/wallpapers'
+import { deriveWallpaperPreview, uploadWallpaper } from '../../data/wallpapers'
 import { useConfigStore } from '../../store/useConfigStore'
 import type { SavedWallpaper } from '../../store/useConfigStore'
 import { useLayoutStore } from '../../store/useLayoutStore'
@@ -49,10 +49,23 @@ function WallpaperPreview({
   wallpaper: SavedWallpaper
 }) {
   if (wallpaper.kind === 'video') {
+    const preview = wallpaper.preview ?? deriveWallpaperPreview(wallpaper.src)
+
+    if (preview) {
+      return (
+        <img
+          src={preview}
+          alt=""
+          className={className}
+          draggable={false}
+          loading="lazy"
+        />
+      )
+    }
+
     return (
       <video
         src={wallpaper.src}
-        poster={wallpaper.preview}
         className={className}
         autoPlay
         muted

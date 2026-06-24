@@ -6,7 +6,7 @@ type WallpaperLayerProps = {
   preview?: string
 }
 
-const videoMountDelayMs = 450
+const videoMountDelayMs = 160
 
 export function WallpaperLayer({ kind = 'image', preview, src }: WallpaperLayerProps) {
   return (
@@ -78,7 +78,7 @@ function VideoWallpaper({ preview, src }: Pick<WallpaperLayerProps, 'preview' | 
           ref={videoRef}
           src={src}
           poster={preview}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${
             videoReady ? 'opacity-100' : 'opacity-0'
           }`}
           autoPlay

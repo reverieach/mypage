@@ -28,3 +28,33 @@ export async function uploadWallpaper(file: File) {
     },
   }
 }
+
+export function deriveWallpaperPreview(src: string | undefined) {
+  if (!src) {
+    return undefined
+  }
+
+  try {
+    const url = new URL(src, window.location.origin)
+    const marker = '/api/wallpapers/files/'
+    const markerIndex = url.pathname.indexOf(marker)
+
+    if (markerIndex < 0) {
+      return undefined
+    }
+
+    const fileName = decodeURIComponent(
+      url.pathname.slice(markerIndex + marker.length),
+    )
+
+    if (!fileName) {
+      return undefined
+    }
+
+    return resolveAgentUrl(
+      `/api/wallpapers/posters/${encodeURIComponent(fileName)}`,
+    )
+  } catch {
+    return undefined
+  }
+}
