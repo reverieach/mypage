@@ -1,57 +1,192 @@
 # Architecture
 
-MyPage is split into two intentionally small pieces.
+MyPage has two deliberately separate parts:
+
+- a static browser start page in `frontend/`
+- a local-only Python Agent in `agent/`
+
+The frontend is optimized for fast personal use. The Agent is the boundary for local files, credentials, mailbox access, scheduled data, and automation scripts.
+
+## High-Level Flow
+
+```mermaid
+flowchart LR
+  Browser["Chrome / Edge start page"] --> Frontend["React static app"]
+  Frontend --> Query["TanStack Query + fetchAgentEnvelope"]
+  Query --> Agent["FastAPI Agent on 127.0.0.1:3217"]
+  Agent --> Cache["agent/app/data cache files"]
+  Agent --> Mail["IMAP / Graph mail collectors"]
+  Agent --> Homework["E:\\作业获取项目"]
+  Agent --> SchoolNotice["BUPT notice page"]
+  Agent --> SQLite["messages.sqlite3"]
+  Agent --> DeepSeek["DeepSeek API, optional"]
+```
+
+The browser never receives secrets. It only receives normalized display data through Agent envelopes.
 
 ## Frontend
 
-The frontend is a static React application that can run as a local page first and later as a Chrome/Edge new-tab extension.
+Stack:
 
-Core choices:
+- Vite
+- React
+- TypeScript
+- Tailwind CSS
+- TanStack Query
+- Zustand
+- react-grid-layout
+- framer-motion
+- lucide-react
 
-- `Vite + React + TypeScript` for the application shell.
-- `Tailwind CSS` for the Apple-inspired wallpaper and glass UI.
-- `shadcn/ui`-style local primitives instead of a heavy off-the-shelf visual framework.
-- `react-grid-layout` for draggable/resizable widgets.
-- `TanStack Query` reserved for dynamic widget data fetching.
-- `Zustand` for local UI state such as persisted widget layouts.
-- `Recharts` for dashboard-style widgets.
+Important files:
 
-The frontend should not store secrets or talk directly to sensitive external services. It reads dynamic data from the local Agent.
+- `frontend/src/App.tsx`: top-level app composition.
+- `frontend/src/app/AppShell.tsx`: wallpaper, time, search, settings, widget grid.
+- `frontend/src/config/appConfig.ts`: static app configuration, search engines, default widgets.
+- `frontend/src/config/types.ts`: widget and config types.
+- `frontend/src/config/useEffectiveConfig.ts`: merges user config into static config.
+- `frontend/src/store/useConfigStore.ts`: persisted user configuration.
+- `frontend/src/store/useLayoutStore.ts`: persisted widget layout.
+- `frontend/src/layout/defaultLayouts.ts`: default layout, normalization, restored-widget placement.
+- `frontend/src/layout/WidgetGrid.tsx`: draggable/resizable widget grid.
+- `frontend/src/widgets/registry.tsx`: maps widget `type` to React component.
+
+### Persistent State
+
+The frontend stores personal UI preferences in `localStorage`:
+
+- `mypage-user-config-v2`: wallpaper, saved wallpapers, quick links, hidden widget ids.
+- `mypage-widget-layouts`: react-grid-layout layouts for breakpoints.
+
+These are intentionally client-side and personal. They are not synced to the Agent.
+
+### Widget Layout
+
+Default layout comes from each widget's `layout` in `appConfig.ts`.
+
+When a widget is restored from Settings:
+
+1. Settings calls `appendWidgetLayout`.
+2. `appendWidgetToLayouts` finds the bottom of currently visible widgets.
+3. The restored widget is placed after that bottom.
+4. The restored widget keeps its default `w`, `h`, `minW`, and `minH`.
+
+`WidgetGrid` sets `compactType={null}` so the grid does not automatically squeeze restored widgets into old holes.
 
 ## Local Agent
 
-The Agent is planned as a Python FastAPI service bound to `127.0.0.1:3217`.
+Stack:
 
-Responsibilities:
+- Python
+- FastAPI
+- SQLite for message state
+- JSON files for lightweight caches
 
-- Read cached local JSON files produced by scheduled collectors.
-- Normalize data for widgets.
-- Keep tokens, cookies, and local paths away from the browser UI.
-- Return stale/error metadata so widgets can fail gracefully.
+Important files:
 
-Planned endpoints:
+- `agent/app/main.py`: FastAPI app, CORS, background mail sync.
+- `agent/app/api/widgets.py`: public local API routes.
+- `agent/app/services/cache.py`: envelope and cache file helpers.
+- `agent/app/services/message_pipeline.py`: mail collectors, DeepSeek analysis, notification center.
+- `agent/app/services/homework.py`: BUPT homework JSON reader and silent manual refresh.
+- `agent/app/services/school_notices.py`: BUPT school notice fetch, relevance filtering, dismiss state.
+- `agent/app/sample_data.py`: fallback sample data.
 
-```txt
-GET /health
-GET /api/school/today
-GET /api/github/contributions
-GET /api/codex/usage/today
-GET /api/automation/digest
-GET /api/scripts/status
+The Agent binds to `127.0.0.1:3217`. It should not be exposed on a public network.
+
+## Agent Envelope
+
+Every widget endpoint should return:
+
+```json
+{
+  "updatedAt": "2026-06-24T02:00:00+08:00",
+  "stale": false,
+  "error": null,
+  "data": {}
+}
 ```
 
-## Current Boundary
+The frontend treats `stale` and `error` as display states, not fatal app errors.
 
-Dynamic widgets now read the local Agent through `frontend/src/data/widgetData.ts`. The Agent returns built-in sample data when no cache file exists, so the start page works immediately after the Agent starts.
+## Current API Surface
 
-Collectors can replace sample data by writing JSON files under `agent/app/data/`:
+Basic:
 
-```txt
-school_today.json
-github_contributions.json
-codex_usage_today.json
-automation_digest.json
-scripts_status.json
-```
+- `GET /health`
 
-Each file may contain either a raw data object, or a full Agent envelope with `updatedAt`, `stale`, `error`, and `data`.
+Static/cache-backed widgets:
+
+- `GET /api/school/today`
+- `GET /api/github/contributions`
+- `GET /api/codex/usage/today`
+- `GET /api/automation/digest`
+- `GET /api/scripts/status`
+
+Homework:
+
+- `GET /api/homework/due`
+- `POST /api/homework/refresh`
+
+School notices:
+
+- `GET /api/school/notices`
+- `POST /api/school/notices/refresh`
+- `POST /api/school/notices/{notice_id}/dismiss`
+
+Mail and notifications:
+
+- `GET /api/mail/summary`
+- `POST /api/mail/refresh`
+- `POST /api/mail/messages/{message_id}/dismiss`
+- `GET /api/notifications`
+
+Microsoft Graph support:
+
+- `GET /api/mail/microsoft/status`
+- `POST /api/mail/microsoft/device/start`
+- `POST /api/mail/microsoft/device/poll`
+
+## Data Storage
+
+Ignored local runtime data:
+
+- `agent/app/data/mail_accounts.json`
+- `agent/app/data/oauth_tokens.json`
+- `agent/app/data/messages.sqlite3`
+- other `agent/app/data/*.json`
+
+Committed templates:
+
+- `agent/mail_accounts.example.json`
+- `agent/.env.example`
+- `agent/app/data/.gitkeep`
+
+## External Integrations
+
+### Mail
+
+QQ IMAP is the working default. Outlook can be represented by forwarding Outlook mail into QQ and configuring forwarded source detection. Microsoft Graph device-code support exists, but is not required for the current setup.
+
+Mail analysis:
+
+- DeepSeek analyzes new messages when `DEEPSEEK_API_KEY` is present.
+- A local keyword fallback keeps the UI usable without DeepSeek.
+- Low-signal mail, read mail, and manually dismissed mail are hidden from the Mail widget.
+- Important mail is copied into the shared notification center.
+
+### Homework
+
+Homework data is read from `E:\作业获取项目\homework_db.json` by default.
+
+Manual refresh uses a silent inline wrapper around the homework project's core functions. It updates the local state file but does not call the homework project's `Notifier`, so it does not send email, desktop notifications, markdown, webhook, WeChat, or PushPlus messages.
+
+### School Notices
+
+School notices are fetched from the BUPT portal notice list. The Agent can reuse saved auth headers from the homework project through `SCHOOL_NOTICE_HEADER_FILE`.
+
+The service parses notice links, extracts dates and detail text, scores relevance for student-facing notices, hides low relevance items, and stores dismiss state locally under `agent/app/data/`.
+
+## Extension Mode
+
+The frontend can be built and loaded as an unpacked Chrome/Edge extension. Dynamic widgets still depend on the local Agent at `127.0.0.1:3217`; without the Agent, widgets show unavailable or sample states while the static page remains usable.

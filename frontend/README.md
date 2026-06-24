@@ -1,73 +1,62 @@
-# React + TypeScript + Vite
+# MyPage Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Vite + React + TypeScript frontend for the MyPage browser start page.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```powershell
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Default URL:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```txt
+http://127.0.0.1:5173/
 ```
+
+## Verify
+
+```powershell
+npm run lint
+npm run build
+```
+
+## Important Files
+
+- `src/app/AppShell.tsx`: main visual shell.
+- `src/config/appConfig.ts`: search engines and widget defaults.
+- `src/config/types.ts`: config and widget types.
+- `src/store/useConfigStore.ts`: user config in `localStorage`.
+- `src/store/useLayoutStore.ts`: widget layouts in `localStorage`.
+- `src/layout/defaultLayouts.ts`: default and restored-widget layout logic.
+- `src/layout/WidgetGrid.tsx`: draggable/resizable widget grid.
+- `src/widgets/registry.tsx`: widget registry.
+- `src/data/apiClient.ts`: local Agent fetch helpers.
+- `src/data/widgetData.ts`: widget data types and query hook.
+
+## Adding A Widget
+
+1. Add or reuse a widget type in `src/config/types.ts`.
+2. Create the widget component under `src/widgets/<name>/`.
+3. Register it in `src/widgets/registry.tsx`.
+4. Add its default config and layout in `src/config/appConfig.ts`.
+5. If dynamic, add an Agent endpoint and data type in `src/data/widgetData.ts`.
+
+Default layout matters: it is reused when a hidden widget is restored from Settings.
+
+## Styling Notes
+
+- Use the existing local UI primitives before adding new component libraries.
+- Use lucide icons for buttons when possible.
+- Hide internal widget scrollbars with `scrollbar-none`.
+- Keep widget content compact and resilient to small sizes.
+- Avoid exposing raw engineering config in Settings.
+
+## Extension Build
+
+```powershell
+npm run build
+```
+
+Load `dist/` as an unpacked Chrome or Edge extension.

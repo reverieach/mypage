@@ -1,56 +1,113 @@
 # MyPage
 
-Personal Chrome/Edge start page and future new-tab extension.
+MyPage is a personal Chrome/Edge start page and new-tab dashboard.
 
-The current milestone establishes the first large foundation:
+It combines:
 
-- Vite + React + TypeScript frontend.
-- Tailwind CSS with an Apple-inspired glass start page shell.
-- `shadcn/ui`-style local primitives for buttons and cards.
-- Config-driven search engines, quick links, widgets, and theme token placeholder.
-- Draggable/resizable widget grid with layout persisted to `localStorage`.
-- Mock widgets for links, GitHub heatmap, school info, Codex usage, automation digest, and script status.
-- Python FastAPI Agent boundary reserved for local dynamic data.
+- wallpaper-style start page UI
+- search with selectable engines
+- draggable/resizable widgets
+- quick links with favicons and folder-like detail view
+- mail summary and notification center
+- BUPT homework due widget with silent manual refresh
+- BUPT school notices widget with relevance filtering
+- local Agent boundary for private data and automation
 
-## Development
+The project is intentionally personal-first: local, small, configurable, and safe to iterate on.
 
-```bash
+## Structure
+
+```txt
+frontend/  Vite + React + TypeScript start page
+agent/     FastAPI local Agent on 127.0.0.1:3217
+docs/      architecture, widget contract, operations, pipeline notes
+```
+
+Read first:
+
+- `AGENTS.md`
+- `docs/architecture.md`
+- `docs/widget-contract.md`
+- `docs/message-pipeline.md`
+- `docs/operations.md`
+
+## Frontend
+
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-Build and lint:
+Open:
 
-```bash
-cd frontend
+```txt
+http://127.0.0.1:5173/
+```
+
+Verify:
+
+```powershell
 npm run lint
 npm run build
 ```
 
-## Browser Extension
-
-Build `frontend/dist`, then load that folder as an unpacked extension in Chrome or Edge. See `docs/extension.md`.
-
 ## Local Agent
 
-The Agent runs on `127.0.0.1:3217` and provides JSON APIs for dynamic widgets.
-
-```bash
+```powershell
 cd agent
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
-.\.venv\Scripts\uvicorn app.main:app --reload --host 127.0.0.1 --port 3217
+.\.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 3217
 ```
 
-Dynamic widgets read:
+Health check:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3217/health
+```
+
+Verify:
+
+```powershell
+cd agent
+python -m compileall app
+```
+
+## Key APIs
 
 ```txt
-GET /api/school/today
-GET /api/github/contributions
-GET /api/codex/usage/today
-GET /api/automation/digest
-GET /api/scripts/status
+GET  /health
+GET  /api/homework/due
+POST /api/homework/refresh
+GET  /api/school/notices
+POST /api/school/notices/refresh
+POST /api/school/notices/{notice_id}/dismiss
+GET  /api/mail/summary
+POST /api/mail/refresh
+POST /api/mail/messages/{message_id}/dismiss
+GET  /api/notifications
 ```
 
-If no cache file exists in `agent/app/data/`, the Agent returns built-in sample data.
+## Privacy
+
+Runtime files under `agent/app/data/` are ignored by Git. They may contain mail state, local tokens, account config, or personal data.
+
+Do not commit:
+
+- real API keys
+- mailbox app passwords
+- OAuth tokens
+- `agent/app/data/*.json`
+- `agent/app/data/*.sqlite3`
+
+## Extension
+
+Build the frontend:
+
+```powershell
+cd frontend
+npm run build
+```
+
+Then load `frontend/dist` as an unpacked extension in Chrome or Edge. Dynamic widgets still need the local Agent.
