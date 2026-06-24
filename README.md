@@ -111,8 +111,30 @@ Do not commit:
 Build the frontend:
 
 ```powershell
-cd frontend
-npm run build
+.\scripts\build-extension.ps1
 ```
 
 Then load `frontend/dist` as an unpacked extension in Chrome or Edge. Dynamic widgets still need the local Agent.
+
+## Local Production
+
+For daily use, build once and start the Agent:
+
+```powershell
+.\scripts\build-extension.ps1
+.\scripts\start-agent.ps1
+```
+
+Open:
+
+```txt
+http://127.0.0.1:3217/
+```
+
+This production URL is suitable for the browser startup page. The unpacked extension is suitable for the new-tab page.
+
+Verify:
+
+```powershell
+.\scripts\smoke-test.ps1
+```

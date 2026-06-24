@@ -19,10 +19,8 @@ http://127.0.0.1:5173/
 ## Start Agent
 
 ```powershell
-cd E:\mypage\agent
-python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
-.\.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 3217
+cd E:\mypage
+.\scripts\start-agent.ps1
 ```
 
 Health check:
@@ -32,6 +30,22 @@ Invoke-RestMethod http://127.0.0.1:3217/health
 ```
 
 If the Agent is already running and needs a restart, stop only the Agent process listening on `3217`. Do not close unrelated editors, browsers, or user apps.
+
+```powershell
+.\scripts\restart-agent.ps1
+```
+
+First-time venv install:
+
+```powershell
+.\scripts\start-agent.ps1 -Install
+```
+
+Stop:
+
+```powershell
+.\scripts\stop-agent.ps1
+```
 
 ## Environment Variables
 
@@ -163,9 +177,8 @@ $env:HOMEWORK_PROJECT_DIR="D:\Projects\HomeworkSentinel"
 Frontend:
 
 ```powershell
-cd E:\mypage\frontend
-npm run lint
-npm run build
+cd E:\mypage
+.\scripts\build-extension.ps1
 ```
 
 Agent:
@@ -178,14 +191,8 @@ python -m compileall app
 Recommended full smoke test:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:3217/health
-Invoke-RestMethod http://127.0.0.1:3217/api/config/load
-Invoke-RestMethod http://127.0.0.1:3217/api/homework/due
-Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/homework/refresh
-Invoke-RestMethod http://127.0.0.1:3217/api/school/notices
-Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/school/notices/refresh
-Invoke-RestMethod http://127.0.0.1:3217/api/mail/summary
-Invoke-RestMethod http://127.0.0.1:3217/api/notifications
+.\scripts\smoke-test.ps1
+.\scripts\smoke-test.ps1 -Full
 ```
 
 ## Browser Extension
@@ -193,13 +200,21 @@ Invoke-RestMethod http://127.0.0.1:3217/api/notifications
 Build:
 
 ```powershell
-cd E:\mypage\frontend
-npm run build
+cd E:\mypage
+.\scripts\build-extension.ps1
 ```
 
 Load `E:\mypage\frontend\dist` as an unpacked extension in Chrome or Edge.
 
 The extension overrides the new-tab page. Dynamic widgets still require the local Agent.
+
+The Agent also serves the production frontend at:
+
+```txt
+http://127.0.0.1:3217/
+```
+
+Use that URL as the browser startup page.
 
 ## School Notices
 

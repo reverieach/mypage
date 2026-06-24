@@ -15,6 +15,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/node_modules/.tmp/
+release/
 agent/app/data/*.json
 agent/app/data/*.sqlite3
 agent/app/data/link-icons/

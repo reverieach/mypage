@@ -97,6 +97,14 @@ Important files:
 
 The Agent binds to `127.0.0.1:3217`. It should not be exposed on a public network.
 
+When `frontend/dist/index.html` exists, the Agent also serves the production start page at:
+
+```txt
+http://127.0.0.1:3217/
+```
+
+This URL is intended for the browser startup page. The Chrome/Edge unpacked extension still owns the new-tab page.
+
 ## Agent Envelope
 
 Every widget endpoint should return:
@@ -117,6 +125,7 @@ The frontend treats `stale` and `error` as display states, not fatal app errors.
 Basic:
 
 - `GET /health`
+- `GET /`
 
 Configuration backup:
 

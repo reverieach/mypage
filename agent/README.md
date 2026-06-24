@@ -19,6 +19,12 @@ python -m compileall app
 Invoke-RestMethod http://127.0.0.1:3217/health
 ```
 
+When `frontend/dist` exists, the Agent also serves the production page:
+
+```txt
+http://127.0.0.1:3217/
+```
+
 ## Runtime Data
 
 Ignored local data lives under:
