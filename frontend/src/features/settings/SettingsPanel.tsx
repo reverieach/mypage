@@ -1,4 +1,16 @@
-import { Eye, EyeOff, Image, LayoutGrid, LinkIcon, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import {
+  Database,
+  Download,
+  Eye,
+  EyeOff,
+  Image,
+  LayoutGrid,
+  LinkIcon,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 
@@ -9,22 +21,36 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { appConfig } from '../../config/appConfig'
+import {
+  loadAgentConfig,
+  listAgentConfigSnapshots,
+  restoreAgentConfigSnapshot,
+  saveAgentConfig,
+  type AgentConfigData,
+  type BackedUpConfig,
+} from '../../data/configBackup'
 import { useConfigStore } from '../../store/useConfigStore'
 import { useLayoutStore } from '../../store/useLayoutStore'
 import { cn } from '../../utils/cn'
 
-type SettingsTab = 'wallpaper' | 'links' | 'widgets'
+type SettingsTab = 'wallpaper' | 'links' | 'widgets' | 'backup'
 
 export function SettingsPanel() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('wallpaper')
   const [wallpaperDraft, setWallpaperDraft] = useState('')
+  const [backupStatus, setBackupStatus] = useState<AgentConfigData | null>(null)
+  const [backupError, setBackupError] = useState<string | null>(null)
   const wallpaper = useConfigStore((state) => state.wallpaper)
   const wallpapers = useConfigStore((state) => state.wallpapers)
   const links = useConfigStore((state) => state.links)
   const hiddenWidgetIds = useConfigStore((state) => state.hiddenWidgetIds)
+  const note = useConfigStore((state) => state.note)
+  const searchEngineId = useConfigStore((state) => state.searchEngineId)
+  const configUpdatedAt = useConfigStore((state) => state.updatedAt)
   const addLink = useConfigStore((state) => state.addLink)
   const addWallpaper = useConfigStore((state) => state.addWallpaper)
   const hideWidget = useConfigStore((state) => state.hideWidget)
+  const importSnapshot = useConfigStore((state) => state.importSnapshot)
   const removeLink = useConfigStore((state) => state.removeLink)
   const removeWallpaper = useConfigStore((state) => state.removeWallpaper)
   const resetLinks = useConfigStore((state) => state.resetLinks)
@@ -33,6 +59,45 @@ export function SettingsPanel() {
   const showWidget = useConfigStore((state) => state.showWidget)
   const updateLink = useConfigStore((state) => state.updateLink)
   const appendWidgetLayout = useLayoutStore((state) => state.appendWidgetLayout)
+  const compactWidgetLayouts = useLayoutStore((state) => state.compactLayouts)
+  const layouts = useLayoutStore((state) => state.layouts)
+  const layoutsUpdatedAt = useLayoutStore((state) => state.updatedAt)
+  const importLayouts = useLayoutStore((state) => state.importLayouts)
+
+  function currentBackupConfig(): BackedUpConfig {
+    return {
+      userConfig: {
+        wallpaper,
+        wallpapers,
+        links,
+        hiddenWidgetIds,
+        note,
+        searchEngineId,
+        updatedAt: configUpdatedAt,
+      },
+      layouts,
+      layoutsUpdatedAt,
+    }
+  }
+
+  async function refreshBackupStatus() {
+    try {
+      const envelope = await loadAgentConfig()
+      setBackupStatus(envelope.data)
+      setBackupError(envelope.error)
+    } catch {
+      setBackupError('Agent backup is unavailable')
+    }
+  }
+
+  function visibleWidgetIdsAfterHide(id: string) {
+    return appConfig.widgets
+      .map((widget) => widget.id)
+      .filter(
+        (widgetId) =>
+          widgetId !== id && !hiddenWidgetIds.includes(widgetId),
+      )
+  }
 
   function handleShowWidget(id: string) {
     const visibleWidgetIds = appConfig.widgets
@@ -41,6 +106,103 @@ export function SettingsPanel() {
 
     appendWidgetLayout(id, visibleWidgetIds)
     showWidget(id)
+  }
+
+  function handleHideWidget(id: string) {
+    hideWidget(id)
+    compactWidgetLayouts(visibleWidgetIdsAfterHide(id))
+  }
+
+  function visibleWidgetIdsForSnapshot(config: BackedUpConfig) {
+    return appConfig.widgets
+      .map((widget) => widget.id)
+      .filter(
+        (widgetId) =>
+          !config.userConfig.hiddenWidgetIds.includes(widgetId),
+      )
+  }
+
+  function applyBackupConfig(config: BackedUpConfig) {
+    importSnapshot(config.userConfig)
+    importLayouts(
+      config.layouts,
+      config.layoutsUpdatedAt,
+      visibleWidgetIdsForSnapshot(config),
+    )
+  }
+
+  async function exportBackup() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      schemaVersion: 1,
+      config: currentBackupConfig(),
+    }
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json',
+      }),
+    )
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `mypage-backup-${new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleBackupFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (!file) {
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(await file.text()) as {
+        config?: BackedUpConfig
+      }
+      if (!parsed.config?.userConfig || !parsed.config.layouts) {
+        throw new Error('Invalid backup file')
+      }
+
+      applyBackupConfig(parsed.config)
+      const envelope = await saveAgentConfig(parsed.config, 'import')
+      setBackupStatus(envelope.data)
+      setBackupError(envelope.error)
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : 'Import failed')
+    }
+  }
+
+  async function restoreLatestSnapshot() {
+    try {
+      const status = await loadAgentConfig()
+      const snapshotCount = status.data.snapshotCount
+
+      if (!snapshotCount) {
+        setBackupError('No snapshots to restore')
+        return
+      }
+
+      const snapshots = await listAgentConfigSnapshots()
+      const latestId = snapshots.data.items[0]?.id
+
+      if (!latestId) {
+        setBackupError('No snapshots to restore')
+        return
+      }
+
+      const envelope = await restoreAgentConfigSnapshot(latestId)
+      if (envelope.data.config) {
+        applyBackupConfig(envelope.data.config)
+      }
+      setBackupStatus(envelope.data)
+      setBackupError(envelope.error)
+    } catch {
+      setBackupError('Restore failed')
+    }
   }
 
   function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
@@ -71,11 +233,12 @@ export function SettingsPanel() {
         </DialogDescription>
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-2 rounded-full border border-white/12 bg-white/10 p-1">
+      <div className="mt-5 grid grid-cols-4 gap-2 rounded-full border border-white/12 bg-white/10 p-1">
         {[
           { id: 'wallpaper', label: 'Wallpaper', icon: Image },
           { id: 'links', label: 'Links', icon: LinkIcon },
           { id: 'widgets', label: 'Widgets', icon: LayoutGrid },
+          { id: 'backup', label: 'Backup', icon: Database },
         ].map((tab) => {
           const Icon = tab.icon
 
@@ -87,7 +250,13 @@ export function SettingsPanel() {
                 'flex h-9 items-center justify-center gap-2 rounded-full text-xs font-medium text-white/62 transition',
                 activeTab === tab.id && 'bg-white/20 text-white shadow-soft',
               )}
-              onClick={() => setActiveTab(tab.id as SettingsTab)}
+              onClick={() => {
+                setActiveTab(tab.id as SettingsTab)
+
+                if (tab.id === 'backup') {
+                  void refreshBackupStatus()
+                }
+              }}
             >
               <Icon className="h-4 w-4" aria-hidden="true" />
               {tab.label}
@@ -266,7 +435,9 @@ export function SettingsPanel() {
                     size="sm"
                     variant={hidden ? 'glass' : 'ghost'}
                     onClick={() =>
-                      hidden ? handleShowWidget(widget.id) : hideWidget(widget.id)
+                      hidden
+                        ? handleShowWidget(widget.id)
+                        : handleHideWidget(widget.id)
                     }
                   >
                     {hidden ? (
@@ -279,6 +450,58 @@ export function SettingsPanel() {
                 </div>
               )
             })}
+          </div>
+        ) : null}
+
+        {activeTab === 'backup' ? (
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/12 bg-white/10 p-4">
+              <p className="text-sm font-medium text-white/82">
+                Agent backup
+              </p>
+              <div className="mt-3 space-y-2 text-xs text-white/52">
+                <p>
+                  Status:{' '}
+                  {backupStatus?.configured ? 'Configured' : 'No backup yet'}
+                </p>
+                <p>
+                  Last save:{' '}
+                  {backupStatus?.updatedAt
+                    ? new Date(backupStatus.updatedAt).toLocaleString('zh-CN')
+                    : 'Never'}
+                </p>
+                <p>Snapshots: {backupStatus?.snapshotCount ?? 0}</p>
+                <p>Source: Agent SQLite + browser localStorage cache</p>
+                {backupError ? (
+                  <p className="text-amber-100/82">{backupError}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="ghost" onClick={() => void refreshBackupStatus()}>
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Refresh
+              </Button>
+              <Button variant="ghost" onClick={() => void restoreLatestSnapshot()}>
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Restore latest
+              </Button>
+              <Button variant="ghost" onClick={() => void exportBackup()}>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Export
+              </Button>
+              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full border border-white/12 bg-white/10 px-4 text-sm font-medium text-white/72 transition hover:bg-white/16">
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                Import
+                <input
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={handleBackupFile}
+                />
+              </label>
+            </div>
           </div>
         ) : null}
       </div>

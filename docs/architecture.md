@@ -19,6 +19,7 @@ flowchart LR
   Agent --> Homework["E:\\作业获取项目"]
   Agent --> SchoolNotice["BUPT notice page"]
   Agent --> SQLite["messages.sqlite3"]
+  Agent --> UserConfig["user_config.sqlite3"]
   Agent --> DeepSeek["DeepSeek API, optional"]
 ```
 
@@ -58,7 +59,7 @@ The frontend stores personal UI preferences in `localStorage`:
 - `mypage-user-config-v2`: wallpaper, saved wallpapers, quick links, hidden widget ids.
 - `mypage-widget-layouts`: react-grid-layout layouts for breakpoints.
 
-These are intentionally client-side and personal. They are not synced to the Agent.
+These are intentionally client-side and personal, but they are now mirrored to the Agent as a trusted local backup. The browser cache remains the fast path; `agent/app/data/user_config.sqlite3` is the recovery source when a browser profile, origin, or extension context loses state.
 
 ### Widget Layout
 
@@ -90,6 +91,7 @@ Important files:
 - `agent/app/services/message_pipeline.py`: mail collectors, DeepSeek analysis, notification center.
 - `agent/app/services/homework.py`: BUPT homework JSON reader and silent manual refresh.
 - `agent/app/services/school_notices.py`: BUPT school notice fetch, relevance filtering, dismiss state.
+- `agent/app/services/user_config.py`: trusted local backup for user configuration and layout snapshots.
 - `agent/app/sample_data.py`: fallback sample data.
 
 The Agent binds to `127.0.0.1:3217`. It should not be exposed on a public network.
@@ -114,6 +116,13 @@ The frontend treats `stale` and `error` as display states, not fatal app errors.
 Basic:
 
 - `GET /health`
+
+Configuration backup:
+
+- `GET /api/config/load`
+- `POST /api/config/save`
+- `GET /api/config/snapshots`
+- `POST /api/config/snapshots/{snapshot_id}/restore`
 
 Static/cache-backed widgets:
 
@@ -154,6 +163,7 @@ Ignored local runtime data:
 - `agent/app/data/mail_accounts.json`
 - `agent/app/data/oauth_tokens.json`
 - `agent/app/data/messages.sqlite3`
+- `agent/app/data/user_config.sqlite3`
 - other `agent/app/data/*.json`
 
 Committed templates:
@@ -163,6 +173,21 @@ Committed templates:
 - `agent/app/data/.gitkeep`
 
 ## External Integrations
+
+### Config Backup
+
+The frontend keeps `localStorage` as a fast cache, but the Agent is the trusted local backup for user data. The backed-up config includes:
+
+- links
+- wallpapers
+- hidden widget ids
+- widget layouts
+- sticky note
+- selected search engine
+
+`ConfigBackupSync` loads Agent backup at startup. If Agent data is newer, it restores frontend stores. If local data is newer or no Agent backup exists, it saves local data to Agent. Later changes are saved back to Agent with a short debounce.
+
+The Agent stores the current config in `user_config.sqlite3` and snapshots previous versions before each save. The Settings Backup tab can export, import, refresh status, and restore the latest snapshot.
 
 ### Mail
 

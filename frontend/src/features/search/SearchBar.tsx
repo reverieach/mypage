@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { SearchEngine } from '../../config/types'
+import { useConfigStore } from '../../store/useConfigStore'
 
 type SearchBarProps = {
   engines: SearchEngine[]
@@ -23,9 +24,8 @@ export function SearchBar({ engines }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 176 })
-  const [selectedEngineId, setSelectedEngineId] = useState(
-    engines[0]?.id ?? 'bing',
-  )
+  const selectedEngineId = useConfigStore((state) => state.searchEngineId)
+  const setSelectedEngineId = useConfigStore((state) => state.setSearchEngineId)
   const inputRef = useRef<HTMLInputElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)

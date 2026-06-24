@@ -11,6 +11,7 @@ It combines:
 - mail summary and notification center
 - BUPT homework due widget with silent manual refresh
 - BUPT school notices widget with relevance filtering
+- Agent-backed config backup with snapshots and import/export
 - local Agent boundary for private data and automation
 
 The project is intentionally personal-first: local, small, configurable, and safe to iterate on.
@@ -78,6 +79,10 @@ python -m compileall app
 
 ```txt
 GET  /health
+GET  /api/config/load
+POST /api/config/save
+GET  /api/config/snapshots
+POST /api/config/snapshots/{snapshot_id}/restore
 GET  /api/homework/due
 POST /api/homework/refresh
 GET  /api/school/notices

@@ -1,24 +1,36 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { defaultLayouts, type GridLayouts } from '../layout/defaultLayouts'
 import {
   appendWidgetToLayouts,
-  defaultLayouts,
+  compactLayouts,
   normalizeLayouts,
-  type GridLayouts,
-} from '../layout/defaultLayouts'
+} from '../layout/layoutEngine'
 
 type LayoutState = {
   layouts: GridLayouts
+  updatedAt: string | null
   appendWidgetLayout: (widgetId: string, visibleWidgetIds: string[]) => void
-  setLayouts: (layouts: GridLayouts) => void
-  resetLayouts: () => void
+  compactLayouts: (visibleWidgetIds: string[]) => void
+  importLayouts: (
+    layouts: GridLayouts,
+    updatedAt?: string | null,
+    visibleWidgetIds?: string[],
+  ) => void
+  setLayouts: (layouts: GridLayouts, visibleWidgetIds?: string[]) => void
+  resetLayouts: (visibleWidgetIds?: string[]) => void
+}
+
+function nowStamp() {
+  return new Date().toISOString()
 }
 
 export const useLayoutStore = create<LayoutState>()(
   persist(
     (set) => ({
       layouts: defaultLayouts,
+      updatedAt: null,
       appendWidgetLayout: (widgetId, visibleWidgetIds) =>
         set((state) => ({
           layouts: appendWidgetToLayouts(
@@ -26,9 +38,32 @@ export const useLayoutStore = create<LayoutState>()(
             widgetId,
             visibleWidgetIds,
           ),
+          updatedAt: nowStamp(),
         })),
-      setLayouts: (layouts) => set({ layouts: normalizeLayouts(layouts) }),
-      resetLayouts: () => set({ layouts: defaultLayouts }),
+      compactLayouts: (visibleWidgetIds) =>
+        set((state) => ({
+          layouts: compactLayouts(state.layouts, visibleWidgetIds),
+          updatedAt: nowStamp(),
+        })),
+      importLayouts: (layouts, updatedAt, visibleWidgetIds) =>
+        set({
+          layouts: visibleWidgetIds
+            ? compactLayouts(layouts, visibleWidgetIds)
+            : normalizeLayouts(layouts),
+          updatedAt: updatedAt ?? null,
+        }),
+      setLayouts: (layouts, visibleWidgetIds) =>
+        set({
+          layouts: normalizeLayouts(layouts, visibleWidgetIds),
+          updatedAt: nowStamp(),
+        }),
+      resetLayouts: (visibleWidgetIds) =>
+        set({
+          layouts: visibleWidgetIds
+            ? compactLayouts(defaultLayouts, visibleWidgetIds)
+            : normalizeLayouts(defaultLayouts),
+          updatedAt: nowStamp(),
+        }),
     }),
     {
       name: 'mypage-widget-layouts',

@@ -8,6 +8,7 @@ import { LinksGridWidget } from './links/LinksGridWidget'
 import { MailDigestWidget } from './mail/MailDigestWidget'
 import { StickyNoteWidget } from './notes/StickyNoteWidget'
 import { NotificationsWidget } from './notifications/NotificationsWidget'
+import { SchoolNoticesWidget } from './school/SchoolNoticesWidget'
 import { SchoolTodayWidget } from './school/SchoolTodayWidget'
 import { ScriptStatusWidget } from './scripts/ScriptStatusWidget'
 import { WeatherWidget } from './weather/WeatherWidget'
@@ -21,6 +22,7 @@ const widgetRegistry = {
   'scripts.status': ScriptStatusWidget,
   'notifications.center': NotificationsWidget,
   'homework.due': HomeworkDueWidget,
+  'school.notices': SchoolNoticesWidget,
   'notes.sticky': StickyNoteWidget,
   'weather.summary': WeatherWidget,
   'mail.digest': MailDigestWidget,
@@ -59,6 +61,10 @@ export function WidgetRenderer({ config }: { config: WidgetConfig }) {
     }
     case 'homework.due': {
       const Component = widgetRegistry['homework.due']
+      return <Component config={config} />
+    }
+    case 'school.notices': {
+      const Component = widgetRegistry['school.notices']
       return <Component config={config} />
     }
     case 'notes.sticky': {

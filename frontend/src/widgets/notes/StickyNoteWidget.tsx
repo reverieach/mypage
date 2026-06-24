@@ -1,13 +1,8 @@
-import { useEffect, useState } from 'react'
-
-const noteKey = 'mypage-sticky-note'
+import { useConfigStore } from '../../store/useConfigStore'
 
 export function StickyNoteWidget() {
-  const [note, setNote] = useState(() => localStorage.getItem(noteKey) ?? '')
-
-  useEffect(() => {
-    localStorage.setItem(noteKey, note)
-  }, [note])
+  const note = useConfigStore((state) => state.note)
+  const setNote = useConfigStore((state) => state.setNote)
 
   return (
     <textarea

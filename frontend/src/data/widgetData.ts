@@ -122,6 +122,26 @@ export type HomeworkDueData = {
   }>
 }
 
+export type SchoolNoticesData = {
+  windowLabel: string
+  sourceUrl: string
+  hiddenCount?: number
+  candidateCount?: number
+  items: Array<{
+    id: string
+    title: string
+    summary: string
+    department?: string
+    publishedAt: string
+    deadline?: string | null
+    importance: 'critical' | 'important' | 'normal' | 'low'
+    priorityScore: number
+    category: string
+    displayReason?: string
+    webLink: string
+  }>
+}
+
 export function useAgentWidget<T>(config: DataWidgetConfig) {
   return useQuery({
     queryKey: ['agent-widget', config.id, config.endpoint],

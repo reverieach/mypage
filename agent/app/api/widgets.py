@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
 
 from app.sample_data import (
     AUTOMATION_DIGEST,
@@ -8,6 +8,7 @@ from app.sample_data import (
     GITHUB_CONTRIBUTIONS,
     HOMEWORK_DUE,
     NOTIFICATIONS_CENTER,
+    SCHOOL_NOTICES,
     SCHOOL_TODAY,
     SCRIPTS_STATUS,
 )
@@ -22,8 +23,47 @@ from app.services.message_pipeline import (
     refresh_mail,
     start_microsoft_device_auth,
 )
+from app.services.school_notices import (
+    dismiss_school_notice,
+    read_school_notices,
+    refresh_school_notices,
+)
+from app.services.user_config import (
+    list_config_snapshots,
+    load_user_config,
+    restore_config_snapshot,
+    save_user_config,
+)
 
 router = APIRouter(prefix="/api")
+
+
+@router.get("/config/load")
+def config_load() -> dict[str, Any]:
+    return envelope(load_user_config(), stale=False)
+
+
+@router.post("/config/save")
+def config_save(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    reason = str(payload.get("reason") or "autosave")
+    return envelope(save_user_config(payload, reason=reason), stale=False)
+
+
+@router.get("/config/snapshots")
+def config_snapshots() -> dict[str, Any]:
+    return envelope(list_config_snapshots(), stale=False)
+
+
+@router.post("/config/snapshots/{snapshot_id}/restore")
+def config_snapshot_restore(snapshot_id: int) -> dict[str, Any]:
+    try:
+        return envelope(restore_config_snapshot(snapshot_id), stale=False)
+    except ValueError as exc:
+        return envelope(
+            {"configured": False, "config": None, "snapshotCount": 0},
+            stale=True,
+            error=str(exc),
+        )
 
 
 @router.get("/school/today")
@@ -116,3 +156,39 @@ def homework_refresh() -> dict[str, Any]:
         return envelope(HOMEWORK_DUE, stale=True, error=str(exc))
     except ValueError as exc:
         return envelope(HOMEWORK_DUE, stale=True, error=f"homework refresh config failed: {exc}")
+
+
+@router.get("/school/notices")
+def school_notices() -> dict[str, Any]:
+    try:
+        return envelope(read_school_notices(days=2), stale=False)
+    except PermissionError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=str(exc))
+    except OSError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices read failed: {exc}")
+    except ValueError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices parse failed: {exc}")
+
+
+@router.post("/school/notices/refresh")
+def school_notices_refresh() -> dict[str, Any]:
+    try:
+        return envelope(refresh_school_notices(days=2), stale=False)
+    except PermissionError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=str(exc))
+    except TimeoutError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices refresh timed out: {exc}")
+    except OSError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices refresh failed: {exc}")
+    except RuntimeError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=str(exc))
+    except ValueError as exc:
+        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices refresh config failed: {exc}")
+
+
+@router.post("/school/notices/{notice_id}/dismiss")
+def school_notices_dismiss(notice_id: str) -> dict[str, Any]:
+    try:
+        return envelope(dismiss_school_notice(notice_id), stale=False)
+    except ValueError as exc:
+        return envelope({"id": notice_id, "dismissed": False}, stale=True, error=str(exc))

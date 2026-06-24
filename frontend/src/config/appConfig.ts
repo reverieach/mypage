@@ -137,5 +137,13 @@ export const appConfig: AppConfig = {
       title: 'Important',
       layout: { x: 7, y: 9, w: 5, h: 3, minW: 3, minH: 2 },
     },
+    {
+      id: 'school-notices',
+      type: 'school.notices',
+      title: 'School Notices',
+      layout: { x: 0, y: 12, w: 5, h: 3, minW: 3, minH: 2 },
+      endpoint: '/api/school/notices',
+      refreshIntervalMs: 10 * 60 * 1000,
+    },
   ],
 }

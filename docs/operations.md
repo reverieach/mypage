@@ -75,6 +75,32 @@ Invoke-RestMethod http://127.0.0.1:3217/api/notifications
 
 The Mail widget hides read, dismissed, low-signal, and obvious promotion mail.
 
+## Config Backup
+
+Trusted local config backup:
+
+```txt
+agent/app/data/user_config.sqlite3
+```
+
+Useful API checks:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3217/api/config/load
+Invoke-RestMethod http://127.0.0.1:3217/api/config/snapshots
+```
+
+The frontend automatically syncs these user data groups:
+
+- links
+- wallpapers
+- hidden widgets
+- widget layouts
+- sticky note
+- selected search engine
+
+Settings has a Backup tab for backup status, JSON export/import, and restoring the latest snapshot. `localStorage` remains the fast browser cache; Agent SQLite is the trusted local backup.
+
 ## Homework Setup
 
 Default project path:
@@ -130,6 +156,7 @@ Recommended full smoke test:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:3217/health
+Invoke-RestMethod http://127.0.0.1:3217/api/config/load
 Invoke-RestMethod http://127.0.0.1:3217/api/homework/due
 Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/homework/refresh
 Invoke-RestMethod http://127.0.0.1:3217/api/school/notices
@@ -222,3 +249,10 @@ Widget restored too small or in the wrong place:
 - check `frontend/src/layout/defaultLayouts.ts`
 - make sure Settings uses `appendWidgetLayout` before `showWidget`
 - do not bypass restored-widget placement by editing only `hiddenWidgetIds`
+
+Config backup missing:
+
+- confirm Agent is running on port `3217`
+- open Settings -> Backup -> Refresh
+- check `agent/app/data/user_config.sqlite3`
+- export a JSON backup before risky changes

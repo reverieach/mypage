@@ -132,3 +132,11 @@ HOMEWORK_DUE = {
     "windowLabel": "0-3d",
     "assignments": [],
 }
+
+SCHOOL_NOTICES = {
+    "windowLabel": "近2天",
+    "sourceUrl": "http://my.bupt.edu.cn/list.jsp?urltype=tree.TreeTempUrl&wbtreeid=1154",
+    "items": [],
+    "hiddenCount": 0,
+    "candidateCount": 0,
+}

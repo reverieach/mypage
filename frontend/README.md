@@ -29,10 +29,12 @@ npm run build
 - `src/config/types.ts`: config and widget types.
 - `src/store/useConfigStore.ts`: user config in `localStorage`.
 - `src/store/useLayoutStore.ts`: widget layouts in `localStorage`.
+- `src/features/config/ConfigBackupSync.tsx`: syncs local browser cache with Agent backup.
 - `src/layout/defaultLayouts.ts`: default and restored-widget layout logic.
 - `src/layout/WidgetGrid.tsx`: draggable/resizable widget grid.
 - `src/widgets/registry.tsx`: widget registry.
 - `src/data/apiClient.ts`: local Agent fetch helpers.
+- `src/data/configBackup.ts`: config backup API types and helpers.
 - `src/data/widgetData.ts`: widget data types and query hook.
 
 ## Adding A Widget
@@ -44,6 +46,10 @@ npm run build
 5. If dynamic, add an Agent endpoint and data type in `src/data/widgetData.ts`.
 
 Default layout matters: it is reused when a hidden widget is restored from Settings.
+
+## Config Backup
+
+The frontend persists to `localStorage` for fast startup and offline use. `ConfigBackupSync` also mirrors links, wallpapers, hidden widgets, layouts, sticky note text, and search engine choice to the local Agent. Settings has a Backup tab for status, export/import, and restoring the latest Agent snapshot.
 
 ## Styling Notes
 

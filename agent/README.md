@@ -32,6 +32,7 @@ Common files:
 - `mail_accounts.json`: local mail account config.
 - `oauth_tokens.json`: Microsoft Graph refresh tokens.
 - `messages.sqlite3`: normalized messages, analyses, notification state.
+- `user_config.sqlite3`: trusted local backup for user config and layout snapshots.
 - optional widget cache JSON files.
 
 Do not commit runtime data.
@@ -48,6 +49,17 @@ The Agent can return cache files or sample data for:
 - `notifications.json`
 
 Each file may contain raw widget data or a full Agent envelope.
+
+## Config Backup
+
+Main endpoints:
+
+- `GET /api/config/load`
+- `POST /api/config/save`
+- `GET /api/config/snapshots`
+- `POST /api/config/snapshots/{snapshot_id}/restore`
+
+The frontend still uses `localStorage` as a fast browser cache, but this SQLite store is the trusted local backup for links, wallpapers, hidden widgets, layouts, sticky note text, and the selected search engine. Each save snapshots the previous config before replacing it.
 
 ## Mail
 

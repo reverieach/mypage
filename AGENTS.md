@@ -37,6 +37,7 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - `agent/app/services/message_pipeline.py`: 邮件采集、DeepSeek 分析、通知统一管道。
 - `agent/app/services/homework.py`: 读取和静默刷新 `E:\作业获取项目` 的作业数据。
 - `agent/app/services/school_notices.py`: 北邮通知读取、筛选、手动隐藏和刷新。
+- `agent/app/services/user_config.py`: 用户配置的本地可信备份、快照和恢复。
 - `agent/app/sample_data.py`: Agent 不可用或无 cache 时的样例数据。
 
 ## 安全和隐私规则
@@ -74,6 +75,14 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - 数据源是 `E:\作业获取项目\homework_db.json`，可通过 `HOMEWORK_PROJECT_DIR` 改路径。
 - `POST /api/homework/refresh` 会立即运行一次静默同步：复用作业项目核心逻辑，保存 state，但跳过所有通知发送。
 - 不要改 `E:\作业获取项目` 的代码，除非用户明确要求修改那个项目。
+
+## Config Backup 规则
+
+- 前端 `localStorage` 是快速缓存和离线兜底，不再是唯一真实数据。
+- Agent 的 `agent/app/data/user_config.sqlite3` 是本机可信备份。
+- 备份内容包括 links、壁纸、组件显隐、layout、便签和搜索引擎选择。
+- 前端启动时由 `ConfigBackupSync` 比较本地和 Agent 更新时间，并做恢复或上传。
+- 每次保存前 Agent 会保留快照，设置页 Backup tab 提供导出、导入和恢复最近快照。
 
 ## School Notices 规则
 
@@ -113,6 +122,7 @@ npm run dev
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:3217/health
+Invoke-RestMethod http://127.0.0.1:3217/api/config/load
 Invoke-RestMethod http://127.0.0.1:3217/api/homework/due
 Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/homework/refresh
 Invoke-RestMethod http://127.0.0.1:3217/api/school/notices

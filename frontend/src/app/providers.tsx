@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { PropsWithChildren } from 'react'
 
+import { ConfigBackupSync } from '../features/config/ConfigBackupSync'
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -12,5 +14,10 @@ const queryClient = new QueryClient({
 })
 
 export function Providers({ children }: PropsWithChildren) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ConfigBackupSync />
+      {children}
+    </QueryClientProvider>
+  )
 }

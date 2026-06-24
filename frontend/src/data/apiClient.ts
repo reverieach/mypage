@@ -29,9 +29,14 @@ export async function fetchAgentEnvelope<T>(
 
 export async function postAgentEnvelope<T>(
   endpoint: string,
+  body?: unknown,
 ): Promise<AgentEnvelope<T>> {
   const response = await fetch(resolveAgentUrl(endpoint), {
     method: 'POST',
+    headers: body === undefined ? undefined : {
+      'Content-Type': 'application/json',
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
 
   if (!response.ok) {

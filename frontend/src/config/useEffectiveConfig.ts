@@ -7,6 +7,9 @@ export function useEffectiveConfig() {
   const wallpapers = useConfigStore((state) => state.wallpapers)
   const links = useConfigStore((state) => state.links)
   const hiddenWidgetIds = useConfigStore((state) => state.hiddenWidgetIds)
+  const note = useConfigStore((state) => state.note)
+  const searchEngineId = useConfigStore((state) => state.searchEngineId)
+  const updatedAt = useConfigStore((state) => state.updatedAt)
 
   return useMemo(
     () =>
@@ -15,7 +18,10 @@ export function useEffectiveConfig() {
         wallpapers,
         links,
         hiddenWidgetIds,
+        note,
+        searchEngineId,
+        updatedAt,
       }),
-    [hiddenWidgetIds, links, wallpaper, wallpapers],
+    [hiddenWidgetIds, links, note, searchEngineId, updatedAt, wallpaper, wallpapers],
   )
 }

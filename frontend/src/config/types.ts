@@ -46,6 +46,7 @@ export type DataWidgetConfig = BaseWidgetConfig & {
     | 'scripts.status'
     | 'notifications.center'
     | 'homework.due'
+    | 'school.notices'
     | 'notes.sticky'
     | 'weather.summary'
     | 'mail.digest'
