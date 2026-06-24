@@ -96,6 +96,8 @@ Main endpoints:
 
 Manual refresh is silent. It updates the homework project state file but does not send email, desktop, markdown, webhook, WeChat, or PushPlus notifications.
 
+See `../docs/homework-integration.md` for the boundary between this repository and the separate homework-fetching project.
+
 ## School Notices
 
 Main endpoints:

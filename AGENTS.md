@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件是给 Codex、Claude、Cursor 等代码 agent 的仓库内工作指南。修改本项目之前先读这里，再按需阅读 `docs/architecture.md`、`docs/widget-contract.md`、`docs/message-pipeline.md` 和 `docs/operations.md`。
+本文件是给 Codex、Claude、Cursor 等代码 agent 的仓库内工作指南。修改本项目之前先读这里，再按需阅读 `docs/architecture.md`、`docs/widget-contract.md`、`docs/message-pipeline.md`、`docs/homework-integration.md` 和 `docs/operations.md`。
 
 ## 项目定位
 
