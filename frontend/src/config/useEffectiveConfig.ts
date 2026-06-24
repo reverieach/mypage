@@ -5,6 +5,9 @@ import { createEffectiveConfig, useConfigStore } from '../store/useConfigStore'
 export function useEffectiveConfig() {
   const wallpaper = useConfigStore((state) => state.wallpaper)
   const wallpapers = useConfigStore((state) => state.wallpapers)
+  const randomWallpaperEnabled = useConfigStore(
+    (state) => state.randomWallpaperEnabled,
+  )
   const links = useConfigStore((state) => state.links)
   const hiddenWidgetIds = useConfigStore((state) => state.hiddenWidgetIds)
   const note = useConfigStore((state) => state.note)
@@ -16,12 +19,22 @@ export function useEffectiveConfig() {
       createEffectiveConfig({
         wallpaper,
         wallpapers,
+        randomWallpaperEnabled,
         links,
         hiddenWidgetIds,
         note,
         searchEngineId,
         updatedAt,
       }),
-    [hiddenWidgetIds, links, note, searchEngineId, updatedAt, wallpaper, wallpapers],
+    [
+      hiddenWidgetIds,
+      links,
+      note,
+      randomWallpaperEnabled,
+      searchEngineId,
+      updatedAt,
+      wallpaper,
+      wallpapers,
+    ],
   )
 }

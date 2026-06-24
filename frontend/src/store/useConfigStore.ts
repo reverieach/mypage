@@ -11,9 +11,12 @@ type PersistedQuickLink = QuickLink & {
   icon?: unknown
 }
 
+export type WallpaperGroup = 'general' | 'day' | 'night'
+
 export type UserConfigSnapshot = {
   wallpaper: string
   wallpapers: SavedWallpaper[]
+  randomWallpaperEnabled: boolean
   links: QuickLink[]
   hiddenWidgetIds: string[]
   note: string
@@ -28,6 +31,7 @@ export type SavedWallpaper = {
   kind?: 'image' | 'video'
   preview?: string
   fallback?: string
+  group?: WallpaperGroup
 }
 
 type ConfigState = UserConfigSnapshot & {
@@ -42,11 +46,13 @@ type ConfigState = UserConfigSnapshot & {
   resetAll: () => void
   resetLinks: () => void
   resetWallpapers: () => void
+  setRandomWallpaperEnabled: (enabled: boolean) => void
   setNote: (note: string) => void
   showWidget: (id: string) => void
   setLinks: (links: QuickLink[]) => void
   setSearchEngineId: (id: string) => void
   setWallpaper: (wallpaper: string) => void
+  updateWallpaper: (id: string, patch: Partial<SavedWallpaper>) => void
   updateLink: (id: string, patch: Partial<QuickLink>) => void
 }
 
@@ -81,12 +87,14 @@ export const defaultWallpapers: SavedWallpaper[] = [
     label: 'Lake',
     src: appConfig.wallpaper,
     kind: 'image',
+    group: 'general',
   },
 ]
 
 export const defaultUserConfig: UserConfigSnapshot = {
   wallpaper: appConfig.wallpaper,
   wallpapers: defaultWallpapers,
+  randomWallpaperEnabled: false,
   links: defaultLinks,
   hiddenWidgetIds: ['sticky-note', 'weather', 'important-info'],
   note: '',
@@ -126,6 +134,7 @@ export const useConfigStore = create<ConfigState>()(
 
           const nextWallpaper = {
             id: createWallpaperId(),
+            group: 'general' as const,
             ...wallpaper,
           }
 
@@ -149,8 +158,15 @@ export const useConfigStore = create<ConfigState>()(
               ? snapshot.wallpaper
               : state.wallpaper,
           wallpapers: Array.isArray(snapshot.wallpapers)
-            ? snapshot.wallpapers
+            ? snapshot.wallpapers.map((wallpaper) => ({
+                ...wallpaper,
+                group: wallpaper.group ?? 'general',
+              }))
             : state.wallpapers,
+          randomWallpaperEnabled:
+            typeof snapshot.randomWallpaperEnabled === 'boolean'
+              ? snapshot.randomWallpaperEnabled
+              : state.randomWallpaperEnabled,
           links: Array.isArray(snapshot.links)
             ? stripLinksCache(snapshot.links)
             : state.links,
@@ -220,8 +236,11 @@ export const useConfigStore = create<ConfigState>()(
         set({
           wallpaper: appConfig.wallpaper,
           wallpapers: defaultWallpapers,
+          randomWallpaperEnabled: false,
           updatedAt: nowStamp(),
         }),
+      setRandomWallpaperEnabled: (enabled) =>
+        set({ randomWallpaperEnabled: enabled, updatedAt: nowStamp() }),
       setNote: (note) => set({ note, updatedAt: nowStamp() }),
       showWidget: (id) =>
         set((state) => ({
@@ -232,6 +251,13 @@ export const useConfigStore = create<ConfigState>()(
       setSearchEngineId: (id) =>
         set({ searchEngineId: id, updatedAt: nowStamp() }),
       setWallpaper: (wallpaper) => set({ wallpaper, updatedAt: nowStamp() }),
+      updateWallpaper: (id, patch) =>
+        set((state) => ({
+          wallpapers: state.wallpapers.map((wallpaper) =>
+            wallpaper.id === id ? { ...wallpaper, ...patch } : wallpaper,
+          ),
+          updatedAt: nowStamp(),
+        })),
       updateLink: (id, patch) =>
         set((state) => ({
           links: state.links.map((link) =>
@@ -254,8 +280,15 @@ export const useConfigStore = create<ConfigState>()(
             ? stripLinksCache(persistedState.links)
             : current.links,
           wallpapers: Array.isArray(persistedState.wallpapers)
-            ? persistedState.wallpapers
+            ? persistedState.wallpapers.map((wallpaper) => ({
+                ...wallpaper,
+                group: wallpaper.group ?? 'general',
+              }))
             : current.wallpapers,
+          randomWallpaperEnabled:
+            typeof persistedState.randomWallpaperEnabled === 'boolean'
+              ? persistedState.randomWallpaperEnabled
+              : current.randomWallpaperEnabled,
           hiddenWidgetIds: Array.isArray(persistedState.hiddenWidgetIds)
             ? persistedState.hiddenWidgetIds
             : current.hiddenWidgetIds,
@@ -264,6 +297,7 @@ export const useConfigStore = create<ConfigState>()(
       partialize: (state) => ({
         wallpaper: state.wallpaper,
         wallpapers: state.wallpapers,
+        randomWallpaperEnabled: state.randomWallpaperEnabled,
         links: stripLinksCache(state.links),
         hiddenWidgetIds: state.hiddenWidgetIds,
         note: state.note,

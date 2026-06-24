@@ -1,5 +1,5 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import { Plus, X } from 'lucide-react'
 
 import { Button } from '../../components/ui/button'
@@ -88,22 +88,24 @@ export function LinksFolderDialog({
                       )}
                     />
                   </div>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3">
-                    {links.map((link) => {
-                      const globalIndex = config.links.findIndex(
-                        (item) => item.id === link.id,
-                      )
+                  <LayoutGroup>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3">
+                      {links.map((link) => {
+                        const globalIndex = config.links.findIndex(
+                          (item) => item.id === link.id,
+                        )
 
-                      return (
-                        <DraggableLinkTile
-                          key={link.id}
-                          index={globalIndex}
-                          link={link}
-                          size="large"
-                        />
-                      )
-                    })}
-                  </div>
+                        return (
+                          <DraggableLinkTile
+                            key={link.id}
+                            index={globalIndex}
+                            link={link}
+                            size="large"
+                          />
+                        )
+                      })}
+                    </div>
+                  </LayoutGroup>
                 </section>
               ))}
             </div>

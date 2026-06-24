@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { LayoutGroup, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { LinksGridWidgetConfig, QuickLink } from '../../config/types'
@@ -90,12 +91,11 @@ export function LinksGridWidget({ config }: { config: LinksGridWidgetConfig }) {
       className="scrollbar-none h-full overflow-y-auto overscroll-contain"
       style={{ scrollSnapType: 'y mandatory' }}
     >
-      <div className="grid" style={{ gap: TILE_GAP }}>
-        {rows.map((row) => (
+      <LayoutGroup>
+        <div className="grid" style={{ gap: TILE_GAP }}>
+        {rows.map((row, rowIndex) => (
           <div
-            key={row
-              .map((item) => (item.type === 'link' ? item.link.id : item.id))
-              .join(':')}
+            key={rowIndex}
             className="grid"
             style={{
               gap: TILE_GAP,
@@ -109,9 +109,14 @@ export function LinksGridWidget({ config }: { config: LinksGridWidgetConfig }) {
                 <AddLinkDialog
                   key={item.id}
                   trigger={
-                    <button
+                    <motion.button
+                      layout
                       type="button"
                       className="flex h-full min-h-0 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/18 bg-white/8 px-2 py-2 text-center text-white/68 transition hover:-translate-y-0.5 hover:bg-white/16 hover:text-white"
+                      transition={{
+                        duration: 0.18,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/12">
                         <Plus className="h-5 w-5" aria-hidden="true" />
@@ -119,7 +124,7 @@ export function LinksGridWidget({ config }: { config: LinksGridWidgetConfig }) {
                       <span className="w-full truncate text-xs font-medium">
                         Add
                       </span>
-                    </button>
+                    </motion.button>
                   }
                 />
               ) : (
@@ -133,7 +138,8 @@ export function LinksGridWidget({ config }: { config: LinksGridWidgetConfig }) {
             )}
           </div>
         ))}
-      </div>
+        </div>
+      </LayoutGroup>
     </div>
   )
 }

@@ -84,6 +84,8 @@ function mergeProtectiveBackup(local: BackedUpConfig, remote: BackedUpConfig): B
       ...localUser,
       wallpaper: useRemoteWallpaper ? remoteUser.wallpaper : localUser.wallpaper,
       wallpapers: mergedWallpapers,
+      randomWallpaperEnabled:
+        localUser.randomWallpaperEnabled || remoteUser.randomWallpaperEnabled,
       links: useRemoteLinks ? remoteUser.links : localUser.links,
       hiddenWidgetIds: localUser.hiddenWidgetIds.length
         ? localUser.hiddenWidgetIds
@@ -106,6 +108,7 @@ function currentUserConfig(): UserConfigSnapshot {
   return {
     wallpaper: state.wallpaper,
     wallpapers: state.wallpapers,
+    randomWallpaperEnabled: state.randomWallpaperEnabled,
     links: state.links,
     hiddenWidgetIds: state.hiddenWidgetIds,
     note: state.note,

@@ -6,8 +6,12 @@ import {
   Image,
   LayoutGrid,
   LinkIcon,
+  Moon,
   Plus,
   RotateCcw,
+  Shuffle,
+  Sparkles,
+  Sun,
   Trash2,
   Upload,
 } from 'lucide-react'
@@ -31,11 +35,21 @@ import {
 } from '../../data/configBackup'
 import { deriveWallpaperPreview, uploadWallpaper } from '../../data/wallpapers'
 import { useConfigStore } from '../../store/useConfigStore'
-import type { SavedWallpaper } from '../../store/useConfigStore'
+import type { SavedWallpaper, WallpaperGroup } from '../../store/useConfigStore'
 import { useLayoutStore } from '../../store/useLayoutStore'
 import { cn } from '../../utils/cn'
 
 type SettingsTab = 'wallpaper' | 'links' | 'widgets' | 'backup'
+
+const wallpaperGroups: Array<{
+  id: WallpaperGroup
+  label: string
+  icon: typeof Sparkles
+}> = [
+  { id: 'general', label: 'All', icon: Sparkles },
+  { id: 'day', label: 'Day', icon: Sun },
+  { id: 'night', label: 'Night', icon: Moon },
+]
 
 function inferWallpaperKind(src: string): SavedWallpaper['kind'] {
   return /\.(mp4|webm|mov)(\?|#|$)/i.test(src) ? 'video' : 'image'
@@ -93,6 +107,9 @@ export function SettingsPanel() {
   const [backupError, setBackupError] = useState<string | null>(null)
   const wallpaper = useConfigStore((state) => state.wallpaper)
   const wallpapers = useConfigStore((state) => state.wallpapers)
+  const randomWallpaperEnabled = useConfigStore(
+    (state) => state.randomWallpaperEnabled,
+  )
   const links = useConfigStore((state) => state.links)
   const hiddenWidgetIds = useConfigStore((state) => state.hiddenWidgetIds)
   const note = useConfigStore((state) => state.note)
@@ -106,9 +123,13 @@ export function SettingsPanel() {
   const removeWallpaper = useConfigStore((state) => state.removeWallpaper)
   const resetLinks = useConfigStore((state) => state.resetLinks)
   const resetWallpapers = useConfigStore((state) => state.resetWallpapers)
+  const setRandomWallpaperEnabled = useConfigStore(
+    (state) => state.setRandomWallpaperEnabled,
+  )
   const setWallpaper = useConfigStore((state) => state.setWallpaper)
   const showWidget = useConfigStore((state) => state.showWidget)
   const updateLink = useConfigStore((state) => state.updateLink)
+  const updateWallpaper = useConfigStore((state) => state.updateWallpaper)
   const appendWidgetLayout = useLayoutStore((state) => state.appendWidgetLayout)
   const compactWidgetLayouts = useLayoutStore((state) => state.compactLayouts)
   const layouts = useLayoutStore((state) => state.layouts)
@@ -120,6 +141,7 @@ export function SettingsPanel() {
       userConfig: {
         wallpaper,
         wallpapers,
+        randomWallpaperEnabled,
         links,
         hiddenWidgetIds,
         note,
@@ -361,6 +383,43 @@ export function SettingsPanel() {
               />
             </div>
 
+            <div className="rounded-3xl border border-white/12 bg-white/10 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-white/82">
+                    <Shuffle className="h-4 w-4" aria-hidden="true" />
+                    Random wallpaper
+                  </p>
+                  <p className="mt-1 text-xs text-white/46">
+                    Uses Day + All from 06:00 to 18:00, Night + All otherwise.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={randomWallpaperEnabled}
+                  className={cn(
+                    'relative h-7 w-12 shrink-0 rounded-full border transition',
+                    randomWallpaperEnabled
+                      ? 'border-white/30 bg-white/32'
+                      : 'border-white/12 bg-white/10',
+                  )}
+                  onClick={() =>
+                    setRandomWallpaperEnabled(!randomWallpaperEnabled)
+                  }
+                >
+                  <span
+                    className={cn(
+                      'absolute top-1 h-5 w-5 rounded-full bg-white shadow-soft transition-transform',
+                      randomWallpaperEnabled
+                        ? 'translate-x-5'
+                        : 'translate-x-1',
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               {wallpapers.map((item) => (
                 <div
@@ -382,7 +441,7 @@ export function SettingsPanel() {
                   </button>
                   <div className="flex items-center justify-between border-t border-white/10 px-2 py-1">
                     <span className="text-[11px] text-white/38">
-                      {item.src === wallpaper ? 'Active' : 'Saved'}
+                      {item.src === wallpaper ? 'Fixed' : 'Saved'}
                     </span>
                     <button
                       type="button"
@@ -392,6 +451,29 @@ export function SettingsPanel() {
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 border-t border-white/10 p-1">
+                    {wallpaperGroups.map((group) => {
+                      const Icon = group.icon
+                      const activeGroup = (item.group ?? 'general') === group.id
+
+                      return (
+                        <button
+                          key={group.id}
+                          type="button"
+                          className={cn(
+                            'flex h-8 items-center justify-center gap-1 rounded-full text-[11px] font-medium text-white/46 transition',
+                            activeGroup && 'bg-white/18 text-white/82',
+                          )}
+                          onClick={() =>
+                            updateWallpaper(item.id, { group: group.id })
+                          }
+                        >
+                          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                          {group.label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
