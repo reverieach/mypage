@@ -13,6 +13,8 @@ import { getTheme } from '../themes/registry'
 import type { SavedWallpaper } from '../store/useConfigStore'
 
 const lastRandomWallpaperKey = 'mypage-last-random-wallpaper'
+const sessionWallpaperOverrideKey = 'mypage-session-wallpaper-override'
+const sessionWallpaperOverrideEvent = 'mypage-session-wallpaper-change'
 
 function isDaytime(date = new Date()) {
   const hour = date.getHours()
@@ -51,6 +53,9 @@ function pickRandomWallpaper(wallpapers: SavedWallpaper[], fallback: string) {
 export function AppShell() {
   const config = useEffectiveConfig()
   const [contentHidden, setContentHidden] = useState(false)
+  const [sessionWallpaperOverride, setSessionWallpaperOverride] = useState(() =>
+    sessionStorage.getItem(sessionWallpaperOverrideKey),
+  )
   const wallpapers = useConfigStore((state) => state.wallpapers)
   const randomWallpaperEnabled = useConfigStore(
     (state) => state.randomWallpaperEnabled,
@@ -86,8 +91,29 @@ export function AppShell() {
     return () => window.clearTimeout(timer)
   }, [config.wallpaper, randomWallpaperEnabled, wallpapers])
 
+  useEffect(() => {
+    function handleSessionWallpaperChange() {
+      setSessionWallpaperOverride(
+        sessionStorage.getItem(sessionWallpaperOverrideKey),
+      )
+    }
+
+    window.addEventListener(
+      sessionWallpaperOverrideEvent,
+      handleSessionWallpaperChange,
+    )
+
+    return () =>
+      window.removeEventListener(
+        sessionWallpaperOverrideEvent,
+        handleSessionWallpaperChange,
+      )
+  }, [])
+
   const activeWallpaperSrc =
-    randomWallpaperEnabled && randomWallpaperSrc
+    randomWallpaperEnabled && sessionWallpaperOverride
+      ? sessionWallpaperOverride
+      : randomWallpaperEnabled && randomWallpaperSrc
       ? randomWallpaperSrc
       : config.wallpaper
   const selectedWallpaper = wallpapers.find(

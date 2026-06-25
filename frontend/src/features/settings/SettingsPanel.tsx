@@ -53,6 +53,9 @@ const wallpaperGroups: Array<{
   { id: 'night', label: 'Night', icon: Moon },
 ]
 
+const sessionWallpaperOverrideKey = 'mypage-session-wallpaper-override'
+const sessionWallpaperOverrideEvent = 'mypage-session-wallpaper-change'
+
 function inferWallpaperKind(src: string): SavedWallpaper['kind'] {
   return /\.(mp4|webm|mov)(\?|#|$)/i.test(src) ? 'video' : 'image'
 }
@@ -105,6 +108,9 @@ export function SettingsPanel() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('wallpaper')
   const [wallpaperDraft, setWallpaperDraft] = useState('')
   const [wallpaperError, setWallpaperError] = useState<string | null>(null)
+  const [sessionWallpaperOverride, setSessionWallpaperOverride] = useState(() =>
+    sessionStorage.getItem(sessionWallpaperOverrideKey),
+  )
   const [backupStatus, setBackupStatus] = useState<AgentConfigData | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
   const backupRefresh = useRefreshFeedback()
@@ -289,11 +295,15 @@ export function SettingsPanel() {
     }
   }
 
-  const activeWallpaper = wallpapers.find((item) => item.src === wallpaper) ?? {
+  const displayedWallpaper =
+    randomWallpaperEnabled && sessionWallpaperOverride
+      ? sessionWallpaperOverride
+      : wallpaper
+  const activeWallpaper = wallpapers.find((item) => item.src === displayedWallpaper) ?? {
     id: 'active-wallpaper',
     label: 'Wallpaper',
-    kind: inferWallpaperKind(wallpaper),
-    src: wallpaper,
+    kind: inferWallpaperKind(displayedWallpaper),
+    src: displayedWallpaper,
   }
 
   async function handleWallpaperFile(event: ChangeEvent<HTMLInputElement>) {
@@ -341,6 +351,17 @@ export function SettingsPanel() {
       }
     })
     reader.readAsDataURL(file)
+  }
+
+  function handleWallpaperSelect(src: string) {
+    if (!randomWallpaperEnabled) {
+      setWallpaper(src)
+      return
+    }
+
+    sessionStorage.setItem(sessionWallpaperOverrideKey, src)
+    setSessionWallpaperOverride(src)
+    window.dispatchEvent(new Event(sessionWallpaperOverrideEvent))
   }
 
   return (
@@ -442,7 +463,7 @@ export function SettingsPanel() {
                   <button
                     type="button"
                     className="block w-full text-left transition hover:opacity-90"
-                    onClick={() => setWallpaper(item.src)}
+                    onClick={() => handleWallpaperSelect(item.src)}
                   >
                     <WallpaperPreview
                       wallpaper={item}
@@ -454,7 +475,13 @@ export function SettingsPanel() {
                   </button>
                   <div className="flex items-center justify-between border-t border-white/10 px-2 py-1">
                     <span className="text-[11px] text-white/38">
-                      {item.src === wallpaper ? 'Fixed' : 'Saved'}
+                      {randomWallpaperEnabled
+                        ? sessionWallpaperOverride === item.src
+                          ? 'This tab'
+                          : 'Random'
+                        : item.src === wallpaper
+                          ? 'Fixed'
+                          : 'Saved'}
                     </span>
                     <button
                       type="button"

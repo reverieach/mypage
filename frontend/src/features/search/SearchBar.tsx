@@ -128,7 +128,8 @@ export function SearchBar({ engines }: SearchBarProps) {
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search"
-        className="h-10 min-w-0 flex-1 bg-transparent text-xl font-medium text-white placeholder:text-white/68 focus:outline-none"
+        className="h-10 min-w-0 flex-1 bg-transparent text-2xl font-medium text-white placeholder:text-white/68 focus:outline-none"
+        style={{ fontSize: '1.375rem' }}
         autoComplete="off"
         spellCheck={false}
       />

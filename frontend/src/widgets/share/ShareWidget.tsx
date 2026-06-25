@@ -98,7 +98,7 @@ function ShareItemCard({
   const title = item.kind === 'text' ? item.title : item.originalName ?? item.title
 
   return (
-    <div className="group flex aspect-square min-h-[150px] flex-col rounded-2xl bg-white/8 p-2.5 transition hover:bg-white/11">
+    <div className="group flex min-h-[226px] flex-col rounded-2xl bg-white/8 p-2.5 transition hover:bg-white/11">
       <div className="flex items-center justify-between gap-2">
         <span className="rounded-full bg-white/8 p-1.5 text-white/42">
           <ShareItemIcon item={item} />
@@ -117,7 +117,7 @@ function ShareItemCard({
         <>
           <button
             type="button"
-            className="mt-2 line-clamp-6 min-h-0 flex-1 rounded-xl bg-white/7 px-2.5 py-2 text-left text-xs leading-5 text-white/68 transition hover:bg-white/11 hover:text-white/86"
+            className="mt-2 line-clamp-7 min-h-0 flex-1 rounded-xl bg-white/7 px-2.5 py-2 text-left text-sm leading-5 text-white/68 transition hover:bg-white/11 hover:text-white/86"
             onClick={() => onCopy(item.text ?? '')}
             title="Copy text"
           >
@@ -139,7 +139,7 @@ function ShareItemCard({
         <>
           <button
             type="button"
-            className="mt-2 block min-h-0 flex-1 overflow-hidden rounded-xl bg-white/7 text-left"
+            className="mt-2 block aspect-[4/3] w-full overflow-hidden rounded-xl bg-white/7 text-left"
             onClick={() => onOpenFile(item.id)}
             title="Open in folder"
           >
@@ -473,7 +473,7 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         />
       </div>
 
-      <div className="scrollbar-none grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(150px,1fr))] content-start gap-3 overflow-y-auto">
+      <div className="scrollbar-none grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(170px,1fr))] content-start gap-3 overflow-y-auto">
         {recentItems.length ? (
           recentItems.map((item) => (
             <ShareItemCard
