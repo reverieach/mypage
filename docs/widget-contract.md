@@ -45,6 +45,7 @@ Current widget types:
 - `codex.usage`
 - `automation.digest`
 - `scripts.status`
+- `share.lan`
 - `notifications.center`
 - `homework.due`
 - `school.notices`
@@ -203,6 +204,54 @@ Expected data:
 ```
 
 The compact widget should answer commute questions first: current temperature, feels-like temperature, next-hours rain risk, wind, humidity, and one concise suggestion. Details can show the 12-hour and 7-day arrays.
+
+## LAN Share Widget
+
+`share.lan` reads `GET /api/share/status` from the main local Agent.
+
+Expected data:
+
+```ts
+{
+  enabled: boolean
+  port: number
+  pin?: string | null
+  localUrl: string
+  urls: string[]
+  primaryUrl: string
+  shareDir: string
+  fileDir: string
+  maxFileBytes: number
+  items: Array<{
+    id: string
+    kind: 'text' | 'file'
+    title: string
+    text?: string | null
+    originalName?: string | null
+    mediaType?: string | null
+    size: number
+    createdAt: string
+    source: 'desktop' | 'mobile' | string
+    isImage?: boolean
+  }>
+}
+```
+
+Desktop-side actions through the main Agent:
+
+- add text: `POST /api/share/text`
+- upload file: `POST /api/share/files`
+- download file: `GET /api/share/files/{item_id}`
+- delete item: `POST /api/share/items/{item_id}/delete`
+- clear all: `POST /api/share/clear`
+- reset PIN: `POST /api/share/reset-pin`
+
+The phone-facing page is served by the separate LAN Share app on `3220` at `/share`. It has its own auth flow:
+
+- `POST /api/share/auth` with the 6-digit PIN
+- subsequent requests use `Authorization: Bearer <token>`
+
+The main Agent can show the PIN because it is local-only. The phone-facing `GET /api/share/status` must not return the PIN.
 
 ## School Notices Widget
 

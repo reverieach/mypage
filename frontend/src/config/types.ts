@@ -50,6 +50,7 @@ export type DataWidgetConfig = BaseWidgetConfig & {
     | 'weather.summary'
     | 'mail.digest'
     | 'important.info'
+    | 'share.lan'
   endpoint?: string
   refreshIntervalMs?: number
 }

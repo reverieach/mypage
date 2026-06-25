@@ -4,6 +4,7 @@ MyPage has two deliberately separate parts:
 
 - a static browser start page in `frontend/`
 - a local-only Python Agent in `agent/`
+- an optional LAN Share server for same-network phone access
 
 The frontend is optimized for fast personal use. The Agent is the boundary for local files, credentials, mailbox access, scheduled data, and automation scripts.
 
@@ -14,6 +15,11 @@ flowchart LR
   Browser["Chrome / Edge start page"] --> Frontend["React static app"]
   Frontend --> Query["TanStack Query + fetchAgentEnvelope"]
   Query --> Agent["FastAPI Agent on 127.0.0.1:3217"]
+  Phone["Phone on same LAN"] --> Share["LAN Share on 0.0.0.0:3220"]
+  Share --> ShareDB["E:\\MyPageShare\\lan_share.sqlite3"]
+  Share --> ShareFiles["E:\\MyPageShare\\files"]
+  Agent --> ShareDB
+  Agent --> ShareFiles
   Agent --> Cache["agent/app/data cache files"]
   Agent --> Mail["IMAP / Graph mail collectors"]
   Agent --> Homework["E:\\作业获取项目"]
@@ -87,7 +93,9 @@ Important files:
 
 - `agent/app/main.py`: FastAPI app, CORS, background mail sync.
 - `agent/app/api/widgets.py`: public local API routes.
+- `agent/app/share_main.py`: separate LAN Share FastAPI app bound by script to `0.0.0.0:3220`.
 - `agent/app/services/cache.py`: envelope and cache file helpers.
+- `agent/app/services/lan_share.py`: PIN, token, shared text/file storage, LAN URL discovery.
 - `agent/app/services/message_pipeline.py`: mail collectors, DeepSeek analysis, notification center.
 - `agent/app/services/course_schedule.py`: fixed term schedule reader and Today widget data.
 - `agent/app/services/homework.py`: BUPT homework JSON reader and silent manual refresh.
@@ -105,6 +113,32 @@ http://127.0.0.1:3217/
 ```
 
 This URL is intended for the browser startup page. The Chrome/Edge unpacked extension still owns the new-tab page.
+
+## LAN Share Service
+
+LAN Share is intentionally separate from the main Agent:
+
+- main Agent: `127.0.0.1:3217`, private desktop API, full widget and local-data access
+- Share server: `0.0.0.0:3220`, small phone-facing API, only shared text/files
+
+The Share server is started with:
+
+```powershell
+.\scripts\start-share.ps1
+```
+
+The desktop Share widget talks to the main Agent at `3217`, which can display the current PIN, detected LAN URLs, and recent shared items. Phones talk directly to `3220` and must authenticate with the 6-digit PIN. Successful PIN auth returns a short-lived bearer token stored in the phone browser's local storage.
+
+The shared data lives outside the repository:
+
+```txt
+E:\MyPageShare\lan_share.sqlite3
+E:\MyPageShare\files\
+```
+
+This keeps phone-uploaded files and clipboard history out of Git and out of the main `agent/app/data` private config area. The default maximum file size is 200 MB and can be overridden with `MYPAGE_SHARE_MAX_FILE_BYTES`.
+
+LAN Share should stay LAN-only. Do not bind the main Agent to `0.0.0.0`, and do not port-forward `3220` to the public internet.
 
 ## Agent Envelope
 
@@ -142,6 +176,29 @@ Static/cache-backed widgets:
 - `GET /api/codex/usage/today`
 - `GET /api/automation/digest`
 - `GET /api/scripts/status`
+
+LAN Share, desktop/local side:
+
+- `GET /api/share/status`
+- `GET /api/share/items`
+- `POST /api/share/text`
+- `POST /api/share/files`
+- `GET /api/share/files/{item_id}`
+- `POST /api/share/items/{item_id}/delete`
+- `POST /api/share/clear`
+- `POST /api/share/reset-pin`
+
+LAN Share, phone-facing service on `3220`:
+
+- `GET /share`
+- `GET /api/share/status`
+- `POST /api/share/auth`
+- `GET /api/share/items`
+- `POST /api/share/text`
+- `POST /api/share/files`
+- `GET /api/share/files/{item_id}`
+- `DELETE /api/share/items/{item_id}`
+- `POST /api/share/clear`
 
 Weather:
 
@@ -195,6 +252,11 @@ Ignored local runtime data:
 - `agent/app/data/weather_cache.json`
 - `agent/app/data/weather_settings.json`
 - other `agent/app/data/*.json`
+
+LAN Share runtime data, outside this repository:
+
+- `E:\MyPageShare\lan_share.sqlite3`
+- `E:\MyPageShare\files\`
 
 Committed templates:
 

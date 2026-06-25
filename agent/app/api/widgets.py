@@ -23,6 +23,16 @@ from app.services.link_icons import (
     icon_media_type,
     resolve_link_icon_file,
 )
+from app.services.lan_share import (
+    add_text as add_share_text,
+    clear_items as clear_share_items,
+    delete_item as delete_share_item,
+    get_file_record as get_share_file_record,
+    list_items as list_share_items,
+    reset_pin as reset_share_pin,
+    save_file as save_share_file,
+    share_status,
+)
 from app.services.message_pipeline import (
     dismiss_mail_message,
     mail_summary,
@@ -222,6 +232,69 @@ def automation_digest() -> dict[str, Any]:
 @router.get("/scripts/status")
 def scripts_status() -> dict[str, Any]:
     return read_cached_or_sample("scripts_status.json", SCRIPTS_STATUS)
+
+
+@router.get("/share/status")
+def lan_share_status() -> dict[str, Any]:
+    return envelope({**share_status(include_pin=True), **list_share_items(limit=8)}, stale=False)
+
+
+@router.get("/share/items")
+def lan_share_items() -> dict[str, Any]:
+    return envelope(list_share_items(), stale=False)
+
+
+@router.post("/share/text")
+def lan_share_text(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    try:
+        return envelope(add_share_text(str(payload.get("text") or ""), source="desktop"), stale=False)
+    except ValueError as exc:
+        return envelope({"id": "", "kind": "text"}, stale=True, error=str(exc))
+
+
+@router.post("/share/files")
+def lan_share_file_upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    try:
+        return envelope(
+            save_share_file(
+                file.file,
+                file.filename or "file",
+                file.content_type,
+                source="desktop",
+            ),
+            stale=False,
+        )
+    except ValueError as exc:
+        return envelope({"id": "", "kind": "file"}, stale=True, error=str(exc))
+
+
+@router.get("/share/files/{item_id}")
+def lan_share_file(item_id: str) -> FileResponse:
+    try:
+        path, item = get_share_file_record(item_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Shared file not found") from exc
+
+    return FileResponse(
+        path,
+        media_type=str(item.get("mediaType") or "application/octet-stream"),
+        filename=str(item.get("originalName") or path.name),
+    )
+
+
+@router.post("/share/items/{item_id}/delete")
+def lan_share_delete(item_id: str) -> dict[str, Any]:
+    return envelope({"deleted": delete_share_item(item_id)}, stale=False)
+
+
+@router.post("/share/clear")
+def lan_share_clear() -> dict[str, Any]:
+    return envelope(clear_share_items(), stale=False)
+
+
+@router.post("/share/reset-pin")
+def lan_share_reset_pin() -> dict[str, Any]:
+    return envelope({"pin": reset_share_pin()}, stale=False)
 
 
 @router.get("/weather/summary")

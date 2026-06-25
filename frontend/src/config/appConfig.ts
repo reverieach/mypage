@@ -139,6 +139,14 @@ export const appConfig: AppConfig = {
       layout: { x: 7, y: 9, w: 5, h: 3, minW: 3, minH: 2 },
     },
     {
+      id: 'lan-share',
+      type: 'share.lan',
+      title: 'Share',
+      layout: { x: 7, y: 12, w: 5, h: 3, minW: 4, minH: 2 },
+      endpoint: '/api/share/status',
+      refreshIntervalMs: 10 * 1000,
+    },
+    {
       id: 'school-notices',
       type: 'school.notices',
       title: 'School Notices',

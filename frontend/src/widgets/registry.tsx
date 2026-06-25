@@ -11,6 +11,7 @@ import { NotificationsWidget } from './notifications/NotificationsWidget'
 import { SchoolNoticesWidget } from './school/SchoolNoticesWidget'
 import { SchoolTodayWidget } from './school/SchoolTodayWidget'
 import { ScriptStatusWidget } from './scripts/ScriptStatusWidget'
+import { ShareWidget } from './share/ShareWidget'
 import { WeatherWidget } from './weather/WeatherWidget'
 
 const widgetRegistry = {
@@ -20,6 +21,7 @@ const widgetRegistry = {
   'codex.usage': CodexUsageWidget,
   'automation.digest': AutomationDigestWidget,
   'scripts.status': ScriptStatusWidget,
+  'share.lan': ShareWidget,
   'notifications.center': NotificationsWidget,
   'homework.due': HomeworkDueWidget,
   'school.notices': SchoolNoticesWidget,
@@ -53,6 +55,10 @@ export function WidgetRenderer({ config }: { config: WidgetConfig }) {
     }
     case 'scripts.status': {
       const Component = widgetRegistry['scripts.status']
+      return <Component config={config} />
+    }
+    case 'share.lan': {
+      const Component = widgetRegistry['share.lan']
       return <Component config={config} />
     }
     case 'notifications.center': {

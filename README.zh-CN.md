@@ -15,6 +15,7 @@ MyPage 是一个个人用的 Chrome / Edge 起始页和新标签页工具。它�
 - 邮件摘要和统一通知中心，配置 DeepSeek 后可辅助判断邮件重要性。
 - 北邮作业组件显示未来 `0-3d` 内未完成作业。
 - 北邮学校通知组件支持相关性筛选和手动隐藏。
+- LAN Share 组件支持同一局域网内的剪贴板文本共享和手机传电脑文件。
 - 配置由浏览器 `localStorage` 快速缓存，同时由本地 Agent SQLite 做可信备份和快照。
 - 可构建成 Chrome / Edge 新标签页扩展。
 - 本地 Agent 可直接托管生产页面，用作浏览器启动页。
@@ -23,9 +24,9 @@ MyPage 是一个个人用的 Chrome / Edge 起始页和新标签页工具。它�
 
 ```txt
 frontend/  Vite + React + TypeScript 前端
-agent/     FastAPI 本地 Agent，只绑定 127.0.0.1:3217
+agent/     FastAPI 本地 Agent，只绑定 127.0.0.1:3217；可选 LAN Share 绑定 0.0.0.0:3220
 docs/      架构、组件契约、消息管道、发布和运维文档
-scripts/   Windows 构建、启动、停止、smoke test 等辅助脚本
+scripts/   Windows 构建、启动、停止、smoke test、Agent 和 LAN Share 辅助脚本
 ```
 
 前端不直接读取邮箱密码、本地 cookie、第三方 API key 或本地自动化文件。涉及隐私和本机文件的数据都通过本地 Agent 访问。
@@ -59,6 +60,18 @@ python -m venv .venv
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:3217/health
+```
+
+如果要使用手机剪贴板 / 文件互传，再启动 LAN Share：
+
+```powershell
+.\scripts\start-share.ps1
+```
+
+桌面首页的 Share 组件会显示局域网访问地址和 6 位 PIN。手机连同一个网络后打开该地址，输入 PIN 即可发送文本或文件到电脑。手机传来的文件默认保存在：
+
+```txt
+E:/MyPageShare/files
 ```
 
 ## 日常本地使用

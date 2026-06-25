@@ -47,6 +47,91 @@ Stop:
 .\scripts\stop-agent.ps1
 ```
 
+## LAN Share Setup
+
+LAN Share is the optional same-network service for phone clipboard text and phone-to-PC file transfer. It is a separate process from the main Agent.
+
+Start:
+
+```powershell
+cd E:\mypage
+.\scripts\start-share.ps1
+```
+
+Restart:
+
+```powershell
+.\scripts\restart-share.ps1
+```
+
+Stop:
+
+```powershell
+.\scripts\stop-share.ps1
+```
+
+Status from the desktop Agent:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3217/api/share/status
+```
+
+Status from the LAN service:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3220/api/share/status
+```
+
+The Share widget shows the LAN URL, usually similar to:
+
+```txt
+http://10.x.x.x:3220/share
+```
+
+Open that URL on the phone while the phone and PC are on the same network. Enter the 6-digit PIN shown in the desktop widget. The phone receives a bearer token that expires after 7 days by default.
+
+Runtime data:
+
+```txt
+E:\MyPageShare\lan_share.sqlite3
+E:\MyPageShare\files\
+```
+
+Useful environment variables:
+
+```txt
+MYPAGE_SHARE_PORT
+MYPAGE_SHARE_DIR
+MYPAGE_SHARE_DB_PATH
+MYPAGE_SHARE_FILE_DIR
+MYPAGE_SHARE_MAX_FILE_BYTES
+MYPAGE_SHARE_TOKEN_DAYS
+```
+
+Security boundary:
+
+- Keep `3217` bound to `127.0.0.1`.
+- Only the small Share service listens on `0.0.0.0:3220`.
+- Do not expose `3220` through router port forwarding or public tunnels unless a stronger auth layer is added.
+- If Windows Firewall prompts for Python on private networks, allowing private-network access is enough for same-Wi-Fi use.
+- VPNs may change the visible LAN IP or block local-device discovery. If the phone cannot connect, try the other URL listed by the Share widget, disable "block LAN traffic" in the VPN, or temporarily disconnect the VPN.
+
+Smoke test:
+
+```powershell
+$status = Invoke-RestMethod http://127.0.0.1:3217/api/share/status
+$pin = $status.data.pin
+$auth = Invoke-RestMethod -Method Post http://127.0.0.1:3220/api/share/auth `
+  -ContentType "application/json" `
+  -Body (@{ pin = $pin } | ConvertTo-Json -Compress)
+Invoke-RestMethod -Method Post http://127.0.0.1:3220/api/share/text `
+  -Headers @{ Authorization = "Bearer $($auth.token)" } `
+  -ContentType "application/json" `
+  -Body '{"text":"hello from phone path"}'
+Invoke-RestMethod http://127.0.0.1:3220/api/share/items `
+  -Headers @{ Authorization = "Bearer $($auth.token)" }
+```
+
 ## Environment Variables
 
 Common Agent environment variables:
@@ -64,6 +149,9 @@ HOMEWORK_REFRESH_TIMEOUT_SECONDS
 WEATHER_CACHE_TTL_SECONDS
 WEATHER_TIMEOUT_SECONDS
 OPEN_METEO_FORECAST_URL
+MYPAGE_SHARE_PORT
+MYPAGE_SHARE_DIR
+MYPAGE_SHARE_MAX_FILE_BYTES
 ```
 
 Do not store real secret values in committed files.
@@ -341,6 +429,8 @@ agent/.venv/
 
 These may contain secrets, personal mail, local tokens, or private data. Do not commit them.
 
+LAN Share stores runtime files outside the repository at `E:\MyPageShare` by default. Treat that directory as personal local data.
+
 ## Troubleshooting
 
 Agent unavailable:
@@ -381,3 +471,11 @@ Config backup missing:
 - open Settings -> Backup -> Refresh
 - check `agent/app/data/user_config.sqlite3`
 - export a JSON backup before risky changes
+
+Phone cannot open Share URL:
+
+- confirm `.\scripts\start-share.ps1` is running and `http://127.0.0.1:3220/api/share/status` works on the PC
+- confirm phone and PC are on the same Wi-Fi or routed LAN
+- try every URL listed in the Share widget
+- check Windows Firewall private-network permission for Python
+- check whether VPN split tunneling or LAN blocking is enabled

@@ -146,6 +146,32 @@ export type WeatherSummaryData = {
   lastError?: string
 }
 
+export type LanShareItem = {
+  id: string
+  kind: 'text' | 'file'
+  title: string
+  text?: string | null
+  originalName?: string | null
+  mediaType?: string | null
+  size: number
+  createdAt: string
+  source: string
+  isImage?: boolean
+}
+
+export type LanShareStatusData = {
+  enabled: boolean
+  port: number
+  pin?: string | null
+  localUrl: string
+  urls: string[]
+  primaryUrl: string
+  shareDir: string
+  fileDir: string
+  maxFileBytes: number
+  items: LanShareItem[]
+}
+
 export type NotificationCenterData = {
   items: Array<{
     id: string

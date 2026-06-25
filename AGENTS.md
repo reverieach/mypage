@@ -10,6 +10,7 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - 组件可拖动、缩放、隐藏、从设置恢复。
 - Links、搜索框、时间、作业、邮件、通知等组件服务于日常入口和本地信息汇总。
 - Python Agent 只绑定 `127.0.0.1:3217`，负责读本地文件、跑本地脚本、接邮箱和统一通知管道。
+- 可选 LAN Share 服务绑定 `0.0.0.0:3220`，只负责同局域网手机剪贴板文本和文件互传，不承载主 Agent 能力。
 
 ## 仓库结构
 
@@ -40,6 +41,8 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - `agent/app/services/school_notices.py`: 北邮通知读取、筛选、手动隐藏和刷新。
 - `agent/app/services/user_config.py`: 用户配置的本地可信备份、快照和恢复。
 - `agent/app/services/weather.py`: Open-Meteo 天气读取、北京/北邮默认配置、本地缓存和出门建议。
+- `agent/app/services/lan_share.py`: 局域网共享剪贴板和文件存储、PIN/token、LAN URL 发现。
+- `agent/app/share_main.py`: 独立的手机端 Share FastAPI app，只暴露分享相关接口。
 - `agent/app/sample_data.py`: Agent 不可用或无 cache 时的样例数据。
 
 ## 安全和隐私规则
@@ -48,6 +51,8 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - `agent/app/data/*.json`、`agent/app/data/*.sqlite3` 被 Git 忽略，通常包含本机状态或敏感数据，不要强行加入版本控制。
 - `agent/app/data/mail_accounts.json` 是本机运行配置，不提交；公开模板是 `agent/mail_accounts.example.json`。
 - 前端不能直接访问本地敏感文件、邮箱、自动化脚本或第三方 API 密钥；必须通过本地 Agent。
+- 不要把主 Agent 的 `3217` 改成 `0.0.0.0`。同局域网手机访问只允许走独立的 `3220` Share 服务。
+- LAN Share 的 PIN、token、共享文本和上传文件属于本机运行数据，不要提交；默认目录是 `E:\MyPageShare`。
 - 不要把用户粘贴过的 secret 写进文档、日志、提交信息或示例。
 - 手动 homework refresh 必须是静默的：只能更新本地 `homework_db.json`，不能触发 email、desktop、markdown、wechat、pushplus、webhook 等通知渠道。
 
@@ -114,6 +119,14 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - `agent/app/data/weather_settings.json` 保存地点、阈值和 TTL；未来新增 provider key 时不能提交到 Git。
 - 首页天气应优先显示出门决策信息：当前温度、体感、未来数小时降雨概率、风、湿度和一句建议，而不是堆完整天气表。
 
+## LAN Share 规则
+
+- `share.lan` widget 通过主 Agent 的 `/api/share/status` 读取 PIN、LAN URL 和最近共享项。
+- 手机端只访问 `http://<LAN-IP>:3220/share`，先用 6 位 PIN 换 bearer token。
+- `agent/app/share_main.py` 不应暴露邮箱、作业、配置备份、学校通知等主 Agent API。
+- 手机上传文件默认保存到 `E:\MyPageShare\files`，共享记录存在 `E:\MyPageShare\lan_share.sqlite3`。
+- 如果要修改安全策略，优先保持“主 Agent 本机私有，Share 服务最小暴露面”的架构。
+
 ## 验证
 
 常规前端改动：
@@ -151,6 +164,8 @@ Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/homework/refresh
 Invoke-RestMethod http://127.0.0.1:3217/api/school/notices
 Invoke-RestMethod http://127.0.0.1:3217/api/mail/summary
 Invoke-RestMethod http://127.0.0.1:3217/api/notifications
+Invoke-RestMethod http://127.0.0.1:3217/api/share/status
+Invoke-RestMethod http://127.0.0.1:3220/api/share/status
 ```
 
 ## Git

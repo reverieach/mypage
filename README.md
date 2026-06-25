@@ -15,6 +15,7 @@ The page combines an Apple-style wallpaper surface, search, draggable widgets, q
 - Local mail digest and notification center, with DeepSeek-assisted importance filtering when configured.
 - BUPT homework widget for unfinished assignments due in the next `0-3d`.
 - BUPT school notices widget with relevance filtering and manual dismiss.
+- LAN Share widget for same-network clipboard text and phone-to-PC file transfer.
 - Agent-backed config backup with SQLite snapshots, import, and export.
 - Chrome/Edge extension build for overriding the new-tab page.
 - Agent-hosted production page for browser startup pages.
@@ -23,9 +24,9 @@ The page combines an Apple-style wallpaper surface, search, draggable widgets, q
 
 ```txt
 frontend/  Vite + React + TypeScript UI
-agent/     FastAPI local Agent bound to 127.0.0.1:3217
+agent/     FastAPI local Agent bound to 127.0.0.1:3217, plus optional LAN Share on 0.0.0.0:3220
 docs/      architecture, widget, message pipeline, release, and operations notes
-scripts/   Windows helper scripts for build, startup, smoke tests, and Agent control
+scripts/   Windows helper scripts for build, startup, smoke tests, Agent control, and LAN Share
 ```
 
 The frontend never reads mailbox credentials, local cookies, third-party API keys, or local automation files directly. Dynamic and private data is accessed through the local Agent.
@@ -59,6 +60,18 @@ Health check:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:3217/health
+```
+
+Optional LAN Share service for phone clipboard and file transfer:
+
+```powershell
+.\scripts\start-share.ps1
+```
+
+Open the Share widget on the desktop page, then visit the shown LAN URL on your phone and enter the 6-digit PIN. Files sent from the phone are saved under:
+
+```txt
+E:/MyPageShare/files
 ```
 
 ## Daily Local Use
