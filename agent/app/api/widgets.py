@@ -26,9 +26,11 @@ from app.services.link_icons import (
 from app.services.lan_share import (
     add_text as add_share_text,
     clear_items as clear_share_items,
+    copy_file_to_clipboard as copy_share_file_to_clipboard,
     delete_item as delete_share_item,
     get_file_record as get_share_file_record,
     list_items as list_share_items,
+    reveal_file as reveal_share_file,
     reset_pin as reset_share_pin,
     save_file as save_share_file,
     share_status,
@@ -280,6 +282,26 @@ def lan_share_file(item_id: str) -> FileResponse:
         media_type=str(item.get("mediaType") or "application/octet-stream"),
         filename=str(item.get("originalName") or path.name),
     )
+
+
+@router.post("/share/files/{item_id}/reveal")
+def lan_share_file_reveal(item_id: str) -> dict[str, Any]:
+    try:
+        return envelope(reveal_share_file(item_id), stale=False)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Shared file not found") from exc
+    except OSError as exc:
+        return envelope({"opened": False}, stale=True, error=str(exc))
+
+
+@router.post("/share/files/{item_id}/copy")
+def lan_share_file_copy(item_id: str) -> dict[str, Any]:
+    try:
+        return envelope(copy_share_file_to_clipboard(item_id), stale=False)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Shared file not found") from exc
+    except OSError as exc:
+        return envelope({"copied": False}, stale=True, error=str(exc))
 
 
 @router.post("/share/items/{item_id}/delete")

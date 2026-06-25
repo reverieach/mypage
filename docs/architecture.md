@@ -184,6 +184,8 @@ LAN Share, desktop/local side:
 - `POST /api/share/text`
 - `POST /api/share/files`
 - `GET /api/share/files/{item_id}`
+- `POST /api/share/files/{item_id}/reveal`
+- `POST /api/share/files/{item_id}/copy`
 - `POST /api/share/items/{item_id}/delete`
 - `POST /api/share/clear`
 - `POST /api/share/reset-pin`

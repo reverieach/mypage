@@ -108,7 +108,10 @@ E:\MyPageShare\files\
 Desktop behavior:
 
 - Drag files into the Share widget drop area to upload them to the shared area.
-- Images show thumbnails in the widget/detail view; other files show file cards with open/save actions.
+- Shared items are shown as square cards. Images show thumbnails; text is shown once as a note-style card.
+- File `Open` asks the local Agent to reveal the real file in Windows Explorer.
+- File `Copy` asks the local Agent to put the real file onto the Windows clipboard, so it can be pasted into another desktop app.
+- Text items only expose `Copy`, which copies the text in the browser.
 - The QR button replaces the old "open share" affordance because the useful destination is the phone, not another desktop tab.
 
 Useful environment variables:

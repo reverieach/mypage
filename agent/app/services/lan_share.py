@@ -7,6 +7,9 @@ import secrets
 import shutil
 import socket
 import sqlite3
+import struct
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import BinaryIO, Any
@@ -320,6 +323,95 @@ def get_file_record(item_id: str) -> tuple[Path, dict[str, Any]]:
         raise FileNotFoundError(item_id)
 
     return path, _item_from_row(row)
+
+
+def reveal_file(item_id: str) -> dict[str, Any]:
+    path, item = get_file_record(item_id)
+
+    if sys.platform != "win32":
+        raise OSError("Reveal in folder is only supported on Windows")
+
+    subprocess.Popen(
+        ["explorer.exe", f"/select,{path}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    return {"opened": True, "path": str(path), "item": item}
+
+
+def copy_file_to_clipboard(item_id: str) -> dict[str, Any]:
+    path, item = get_file_record(item_id)
+
+    if sys.platform != "win32":
+        raise OSError("Copy file is only supported on Windows")
+
+    _copy_paths_to_windows_clipboard([path])
+    return {"copied": True, "path": str(path), "item": item}
+
+
+def _copy_paths_to_windows_clipboard(paths: list[Path]) -> None:
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+    user32.OpenClipboard.restype = ctypes.c_bool
+    user32.EmptyClipboard.argtypes = []
+    user32.EmptyClipboard.restype = ctypes.c_bool
+    user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    user32.CloseClipboard.argtypes = []
+    user32.CloseClipboard.restype = ctypes.c_bool
+
+    kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.restype = ctypes.c_bool
+    kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalFree.restype = ctypes.c_void_p
+    kernel32.RtlMoveMemory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
+
+    cf_hdrop = 15
+    gmem_moveable = 0x0002
+    gmem_zeroinit = 0x0040
+    dropfiles_size = 20
+    file_list = "\0".join(str(path.resolve()) for path in paths) + "\0\0"
+    payload = struct.pack("<IiiII", dropfiles_size, 0, 0, 0, 1) + file_list.encode("utf-16le")
+    handle = kernel32.GlobalAlloc(gmem_moveable | gmem_zeroinit, len(payload))
+
+    if not handle:
+        raise OSError("Could not allocate clipboard memory")
+
+    locked = kernel32.GlobalLock(handle)
+
+    if not locked:
+        kernel32.GlobalFree(handle)
+        raise OSError("Could not lock clipboard memory")
+
+    ctypes.memmove(locked, payload, len(payload))
+    kernel32.GlobalUnlock(handle)
+
+    if not user32.OpenClipboard(None):
+        kernel32.GlobalFree(handle)
+        raise OSError("Could not open clipboard")
+
+    try:
+        if not user32.EmptyClipboard():
+            raise OSError("Could not clear clipboard")
+
+        if not user32.SetClipboardData(cf_hdrop, handle):
+            raise OSError("Could not set clipboard data")
+
+        handle = None
+    finally:
+        user32.CloseClipboard()
+
+        if handle:
+            kernel32.GlobalFree(handle)
 
 
 def delete_item(item_id: str) -> bool:

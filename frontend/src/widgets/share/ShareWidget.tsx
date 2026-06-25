@@ -4,6 +4,7 @@ import {
   File,
   FileText,
   FileUp,
+  FolderOpen,
   Image,
   KeyRound,
   Link2,
@@ -84,45 +85,24 @@ function ShareItemIcon({ item }: { item: LanShareItem }) {
 function ShareItemCard({
   item,
   onCopy,
+  onCopyFile,
   onDelete,
+  onOpenFile,
 }: {
   item: LanShareItem
   onCopy: (value: string) => void
+  onCopyFile: (id: string) => void
   onDelete: (id: string) => void
+  onOpenFile: (id: string) => void
 }) {
   const title = item.kind === 'text' ? item.title : item.originalName ?? item.title
 
   return (
-    <div className="group rounded-2xl bg-white/8 p-2.5 transition hover:bg-white/11">
-      {item.kind === 'file' && item.isImage ? (
-        <a
-          href={fileHref(item.id)}
-          target="_blank"
-          rel="noreferrer"
-          className="mb-2 block overflow-hidden rounded-xl bg-white/8"
-        >
-          <img
-            src={fileHref(item.id)}
-            alt={title}
-            className="h-24 w-full object-cover transition duration-200 group-hover:scale-[1.02]"
-            loading="lazy"
-          />
-        </a>
-      ) : null}
-
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-white/78">
-            <span className="shrink-0 text-white/42">
-              <ShareItemIcon item={item} />
-            </span>
-            <span className="truncate">{title}</span>
-          </div>
-          <p className="mt-0.5 truncate text-[11px] text-white/40">
-            {item.source} · {formatTime(item.createdAt)}
-            {item.size ? ` · ${formatSize(item.size)}` : ''}
-          </p>
-        </div>
+    <div className="group flex aspect-square min-h-[150px] flex-col rounded-2xl bg-white/8 p-2.5 transition hover:bg-white/11">
+      <div className="flex items-center justify-between gap-2">
+        <span className="rounded-full bg-white/8 p-1.5 text-white/42">
+          <ShareItemIcon item={item} />
+        </span>
         <button
           type="button"
           className="shrink-0 rounded-full p-1 text-white/28 opacity-0 transition hover:bg-white/12 hover:text-white/76 group-hover:opacity-100"
@@ -134,32 +114,74 @@ function ShareItemCard({
       </div>
 
       {item.kind === 'text' ? (
-        <button
-          type="button"
-          className="mt-2 line-clamp-3 w-full rounded-xl bg-white/7 px-2.5 py-2 text-left text-xs leading-5 text-white/62 transition hover:bg-white/11 hover:text-white/82"
-          onClick={() => onCopy(item.text ?? '')}
-          title="Copy text"
-        >
-          {item.text}
-        </button>
+        <>
+          <button
+            type="button"
+            className="mt-2 line-clamp-6 min-h-0 flex-1 rounded-xl bg-white/7 px-2.5 py-2 text-left text-xs leading-5 text-white/68 transition hover:bg-white/11 hover:text-white/86"
+            onClick={() => onCopy(item.text ?? '')}
+            title="Copy text"
+          >
+            {item.text}
+          </button>
+          <p className="mt-2 truncate text-[11px] text-white/40">
+            {item.source} · {formatTime(item.createdAt)}
+          </p>
+          <button
+            type="button"
+            className="mt-2 inline-flex min-h-8 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/72 transition hover:bg-white/13 hover:text-white"
+            onClick={() => onCopy(item.text ?? '')}
+          >
+            <Copy className="mr-1.5 h-3.5 w-3.5" />
+            Copy
+          </button>
+        </>
       ) : (
-        <div className="mt-2 flex gap-2">
-          <a
-            href={fileHref(item.id)}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex min-h-8 flex-1 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/68 transition hover:bg-white/13 hover:text-white"
+        <>
+          <button
+            type="button"
+            className="mt-2 block min-h-0 flex-1 overflow-hidden rounded-xl bg-white/7 text-left"
+            onClick={() => onOpenFile(item.id)}
+            title="Open in folder"
           >
-            Open
-          </a>
-          <a
-            href={fileHref(item.id)}
-            download={item.originalName ?? title}
-            className="inline-flex min-h-8 flex-1 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/68 transition hover:bg-white/13 hover:text-white"
-          >
-            Save
-          </a>
-        </div>
+            {item.isImage ? (
+              <img
+                src={fileHref(item.id)}
+                alt={title}
+                className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                loading="lazy"
+              />
+            ) : (
+              <span className="grid h-full place-items-center text-white/34">
+                <File className="h-10 w-10" />
+              </span>
+            )}
+          </button>
+          <div className="mt-2 min-w-0">
+            <p className="truncate text-sm font-medium text-white/78">{title}</p>
+            <p className="mt-0.5 truncate text-[11px] text-white/40">
+              {item.source} · {formatTime(item.createdAt)}
+              {item.size ? ` · ${formatSize(item.size)}` : ''}
+            </p>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className="inline-flex min-h-8 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/72 transition hover:bg-white/13 hover:text-white"
+              onClick={() => onOpenFile(item.id)}
+            >
+              <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+              Open
+            </button>
+            <button
+              type="button"
+              className="inline-flex min-h-8 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/72 transition hover:bg-white/13 hover:text-white"
+              onClick={() => onCopyFile(item.id)}
+            >
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              Copy
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
@@ -308,6 +330,44 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
     }
   }
 
+  async function openShareFile(id: string) {
+    setBusy(true)
+    try {
+      const envelope = await postAgentEnvelope(`/api/share/files/${encodeURIComponent(id)}/reveal`)
+
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+
+      setMessage('Opened')
+    } finally {
+      setBusy(false)
+      window.setTimeout(() => setMessage(''), 1200)
+    }
+  }
+
+  async function copyShareFile(id: string) {
+    setBusy(true)
+    try {
+      const envelope = await postAgentEnvelope(`/api/share/files/${encodeURIComponent(id)}/copy`)
+
+      if (envelope.error) {
+        throw new Error(envelope.error)
+      }
+
+      setMessage('Copied')
+    } finally {
+      setBusy(false)
+      window.setTimeout(() => setMessage(''), 1200)
+    }
+  }
+
+  async function copyShareText(value: string) {
+    await copyText(value)
+    setMessage('Copied')
+    window.setTimeout(() => setMessage(''), 1200)
+  }
+
   function handleDragOver(event: DragEvent<HTMLDivElement>) {
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
@@ -413,14 +473,16 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         />
       </div>
 
-      <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
+      <div className="scrollbar-none grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(150px,1fr))] content-start gap-3 overflow-y-auto">
         {recentItems.length ? (
           recentItems.map((item) => (
             <ShareItemCard
               key={item.id}
               item={item}
-              onCopy={(value) => void copyText(value)}
+              onCopy={(value) => void copyShareText(value)}
+              onCopyFile={(id) => void copyShareFile(id)}
               onDelete={(id) => void deleteShareItem(id)}
+              onOpenFile={(id) => void openShareFile(id)}
             />
           ))
         ) : (

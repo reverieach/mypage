@@ -242,9 +242,13 @@ Desktop-side actions through the main Agent:
 - add text: `POST /api/share/text`
 - upload file: `POST /api/share/files`
 - download file: `GET /api/share/files/{item_id}`
+- reveal file in Explorer: `POST /api/share/files/{item_id}/reveal`
+- copy file to Windows clipboard: `POST /api/share/files/{item_id}/copy`
 - delete item: `POST /api/share/items/{item_id}/delete`
 - clear all: `POST /api/share/clear`
 - reset PIN: `POST /api/share/reset-pin`
+
+The desktop widget should render shared items as a square grid, not a list. Text cards should not repeat the same first line as both title and body; show the text once and provide a single copy action. File cards should use `Open` for Explorer reveal and `Copy` for the Windows file clipboard, not browser download links.
 
 The phone-facing page is served by the separate LAN Share app on `3220` at `/share`. It has its own auth flow:
 
