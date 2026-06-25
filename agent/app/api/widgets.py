@@ -43,6 +43,12 @@ from app.services.user_config import (
     restore_config_snapshot,
     save_user_config,
 )
+from app.services.weather import (
+    load_weather_settings,
+    read_weather_summary,
+    refresh_weather_summary,
+    save_weather_settings,
+)
 from app.services.wallpapers import (
     WALLPAPER_CACHE_HEADERS,
     WALLPAPER_DIR,
@@ -212,6 +218,61 @@ def automation_digest() -> dict[str, Any]:
 @router.get("/scripts/status")
 def scripts_status() -> dict[str, Any]:
     return read_cached_or_sample("scripts_status.json", SCRIPTS_STATUS)
+
+
+@router.get("/weather/summary")
+def weather_summary() -> dict[str, Any]:
+    try:
+        return envelope(read_weather_summary(), stale=False)
+    except Exception as exc:
+        return envelope(
+            {
+                "provider": "open-meteo",
+                "location": {"id": "beijing", "label": "北京"},
+                "current": {},
+                "hourly": [],
+                "daily": [],
+                "summary": "天气暂时不可用。",
+                "suggestions": [],
+                "units": {},
+                "sourceUrl": "https://open-meteo.com/",
+            },
+            stale=True,
+            error=f"weather read failed: {exc}",
+        )
+
+
+@router.post("/weather/refresh")
+def weather_refresh() -> dict[str, Any]:
+    try:
+        return envelope(refresh_weather_summary(), stale=False)
+    except Exception as exc:
+        try:
+            data = read_weather_summary()
+        except Exception:
+            data = {
+                "provider": "open-meteo",
+                "location": {"id": "beijing", "label": "北京"},
+                "current": {},
+                "hourly": [],
+                "daily": [],
+                "summary": "天气刷新失败。",
+                "suggestions": [],
+                "units": {},
+                "sourceUrl": "https://open-meteo.com/",
+            }
+
+        return envelope(data, stale=True, error=f"weather refresh failed: {exc}")
+
+
+@router.get("/weather/settings")
+def weather_settings() -> dict[str, Any]:
+    return envelope(load_weather_settings(), stale=False)
+
+
+@router.post("/weather/settings")
+def weather_settings_save(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    return envelope(save_weather_settings(payload), stale=False)
 
 
 @router.get("/notifications")

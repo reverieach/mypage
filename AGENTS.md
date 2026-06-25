@@ -38,6 +38,7 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - `agent/app/services/homework.py`: 读取和静默刷新 `E:\作业获取项目` 的作业数据。
 - `agent/app/services/school_notices.py`: 北邮通知读取、筛选、手动隐藏和刷新。
 - `agent/app/services/user_config.py`: 用户配置的本地可信备份、快照和恢复。
+- `agent/app/services/weather.py`: Open-Meteo 天气读取、北京/北邮默认配置、本地缓存和出门建议。
 - `agent/app/sample_data.py`: Agent 不可用或无 cache 时的样例数据。
 
 ## 安全和隐私规则
@@ -95,6 +96,14 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - 学校通知刷新失败时保留 SQLite 中最近一次成功数据，返回 `stale=true` 和 `lastErrorType`，不要退回样例数据掩盖问题。
 - 只显示近 2 天内和学生相关度较高的通知；低相关通知和手动 dismiss 通知应隐藏。
 - 前端刷新只能拉取并更新本地 cache，不应触发任何外部通知。
+
+## Weather 规则
+
+- 天气组件默认服务北京/北邮场景，第一数据源是 Open-Meteo。
+- 前端不要直接请求天气 API；必须通过本地 Agent 的 `/api/weather/summary` 和 `/api/weather/refresh`。
+- `agent/app/data/weather_cache.json` 是天气缓存，默认 30 分钟 TTL；外部请求失败但缓存存在时返回缓存。
+- `agent/app/data/weather_settings.json` 保存地点、阈值和 TTL；未来新增 provider key 时不能提交到 Git。
+- 首页天气应优先显示出门决策信息：当前温度、体感、未来数小时降雨概率、风、湿度和一句建议，而不是堆完整天气表。
 
 ## 验证
 

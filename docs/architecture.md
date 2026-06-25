@@ -142,6 +142,13 @@ Static/cache-backed widgets:
 - `GET /api/automation/digest`
 - `GET /api/scripts/status`
 
+Weather:
+
+- `GET /api/weather/summary`
+- `POST /api/weather/refresh`
+- `GET /api/weather/settings`
+- `POST /api/weather/settings`
+
 Link icons:
 
 - `GET /api/link-icons/resolve?href=...`
@@ -183,6 +190,8 @@ Ignored local runtime data:
 - `agent/app/data/user_config.sqlite3`
 - `agent/app/data/link_icons.sqlite3`
 - `agent/app/data/link-icons/`
+- `agent/app/data/weather_cache.json`
+- `agent/app/data/weather_settings.json`
 - other `agent/app/data/*.json`
 
 Committed templates:
@@ -218,6 +227,16 @@ Quick links store only user intent:
 - `category`
 
 They do not store favicon URLs. Icons are derived cache data owned by the Agent.
+
+### Weather
+
+The weather widget is a local Agent integration rather than a browser-side API call. The frontend reads `GET /api/weather/summary`; manual refresh calls `POST /api/weather/refresh`.
+
+Default location is BUPT in Beijing, with Beijing city kept as a second saved location. The first provider is Open-Meteo Forecast API, which does not require a local API key for personal use.
+
+The Agent caches normalized weather in `agent/app/data/weather_cache.json` for 30 minutes. Cache data includes current conditions, the next 12 hours, 7 daily forecasts, and rule-based commute advice such as rain, cold, heat, wind, and UV reminders. If the external request fails but cache exists, the Agent returns cached data with `fromCache=true`.
+
+Settings live in `agent/app/data/weather_settings.json` and include locations, active location, alert thresholds, and cache TTL. Future provider-specific secrets must stay in ignored runtime data or user environment variables, never in frontend code.
 
 ### School Notices
 

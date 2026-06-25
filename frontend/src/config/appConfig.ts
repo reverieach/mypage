@@ -122,6 +122,8 @@ export const appConfig: AppConfig = {
       type: 'weather.summary',
       title: 'Weather',
       layout: { x: 0, y: 9, w: 3, h: 3, minW: 3, minH: 2 },
+      endpoint: '/api/weather/summary',
+      refreshIntervalMs: 30 * 60 * 1000,
     },
     {
       id: 'mail-digest',

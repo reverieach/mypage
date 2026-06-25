@@ -96,7 +96,7 @@ export const defaultUserConfig: UserConfigSnapshot = {
   wallpapers: defaultWallpapers,
   randomWallpaperEnabled: false,
   links: defaultLinks,
-  hiddenWidgetIds: ['sticky-note', 'weather', 'important-info'],
+  hiddenWidgetIds: ['sticky-note', 'important-info'],
   note: '',
   searchEngineId: 'bing',
   updatedAt: null,

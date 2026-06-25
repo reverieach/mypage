@@ -61,6 +61,9 @@ OUTLOOK_MAIL_APP_PASSWORD
 MICROSOFT_GRAPH_CLIENT_ID
 HOMEWORK_PROJECT_DIR
 HOMEWORK_REFRESH_TIMEOUT_SECONDS
+WEATHER_CACHE_TTL_SECONDS
+WEATHER_TIMEOUT_SECONDS
+OPEN_METEO_FORECAST_URL
 ```
 
 Do not store real secret values in committed files.
@@ -88,6 +91,35 @@ Invoke-RestMethod http://127.0.0.1:3217/api/notifications
 ```
 
 The Mail widget hides read, dismissed, low-signal, and obvious promotion mail.
+
+## Weather Setup
+
+The weather widget uses the local Agent as a cache boundary. The frontend does not call external weather APIs directly.
+
+Default settings:
+
+```txt
+provider: open-meteo
+active location: 北邮, Beijing
+cache TTL: 30 minutes
+```
+
+Runtime files:
+
+```txt
+agent/app/data/weather_settings.json
+agent/app/data/weather_cache.json
+```
+
+Manual checks:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3217/api/weather/summary
+Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/weather/refresh
+Invoke-RestMethod http://127.0.0.1:3217/api/weather/settings
+```
+
+Open-Meteo requires no API key for this personal setup. If the external request fails but cache exists, the Agent returns the cached payload with `fromCache=true`.
 
 ## Config Backup
 

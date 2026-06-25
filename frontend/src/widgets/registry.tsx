@@ -73,7 +73,7 @@ export function WidgetRenderer({ config }: { config: WidgetConfig }) {
     }
     case 'weather.summary': {
       const Component = widgetRegistry['weather.summary']
-      return <Component />
+      return <Component config={config} />
     }
     case 'mail.digest': {
       const Component = widgetRegistry['mail.digest']

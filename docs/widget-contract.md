@@ -132,6 +132,46 @@ The compact homepage grid:
 
 The folder/detail view groups links by `category` and allows adding links per group.
 
+## Weather Widget
+
+`weather.summary` reads `GET /api/weather/summary` and refreshes through `POST /api/weather/refresh`.
+
+Expected data:
+
+```ts
+{
+  provider: 'open-meteo'
+  location: { id: string; label: string; timezone?: string }
+  current: {
+    temperature?: number | null
+    apparentTemperature?: number | null
+    condition?: string
+    conditionLabel?: string
+    windSpeed?: number | null
+    humidity?: number | null
+  }
+  hourly: Array<{
+    time: string
+    temperature?: number | null
+    precipitationProbability?: number | null
+    condition: string
+    conditionLabel: string
+  }>
+  daily: Array<{
+    date: string
+    condition: string
+    conditionLabel: string
+    temperatureMax?: number | null
+    temperatureMin?: number | null
+  }>
+  summary: string
+  suggestions: Array<{ level: 'warning' | 'notice'; kind: string; message: string }>
+  fromCache?: boolean
+}
+```
+
+The compact widget should answer commute questions first: current temperature, feels-like temperature, next-hours rain risk, wind, humidity, and one concise suggestion. Details can show the 12-hour and 7-day arrays.
+
 ## School Notices Widget
 
 `school.notices` reads `GET /api/school/notices`.

@@ -63,6 +63,69 @@ export type ScriptsStatusData = {
   }>
 }
 
+export type WeatherSummaryData = {
+  provider: string
+  location: {
+    id: string
+    label: string
+    latitude?: number
+    longitude?: number
+    timezone?: string
+  }
+  current: {
+    time?: string | null
+    temperature?: number | null
+    apparentTemperature?: number | null
+    condition?: string
+    conditionLabel?: string
+    precipitation?: number | null
+    windSpeed?: number | null
+    windGust?: number | null
+    humidity?: number | null
+    isDay?: boolean
+  }
+  hourly: Array<{
+    time: string
+    temperature?: number | null
+    apparentTemperature?: number | null
+    precipitationProbability?: number | null
+    precipitation?: number | null
+    condition: string
+    conditionLabel: string
+    windSpeed?: number | null
+    windGust?: number | null
+    humidity?: number | null
+    uvIndex?: number | null
+  }>
+  daily: Array<{
+    date: string
+    condition: string
+    conditionLabel: string
+    temperatureMax?: number | null
+    temperatureMin?: number | null
+    apparentTemperatureMax?: number | null
+    apparentTemperatureMin?: number | null
+    precipitationProbabilityMax?: number | null
+    precipitationSum?: number | null
+    windSpeedMax?: number | null
+    uvIndexMax?: number | null
+    sunrise?: string | null
+    sunset?: string | null
+  }>
+  summary: string
+  suggestions: Array<{
+    level: 'warning' | 'notice'
+    kind: string
+    message: string
+  }>
+  units: Record<string, string>
+  lastRefreshAt?: string
+  nextRefreshAt?: string
+  sourceUrl?: string
+  fromCache?: boolean
+  lastError?: string
+}
+
 export type NotificationCenterData = {
   items: Array<{
     id: string
