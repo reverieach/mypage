@@ -54,7 +54,7 @@ export function SchoolNoticesWidget({ config }: { config: DataWidgetConfig }) {
         throw new Error(envelope.error)
       }
 
-      await query.refetch()
+      void query.refetch()
     })
   }
 
