@@ -35,6 +35,7 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - `agent/app/api/widgets.py`: 所有 `/api/*` widget endpoint。
 - `agent/app/services/cache.py`: Agent envelope 和 cache file 读取。
 - `agent/app/services/message_pipeline.py`: 邮件采集、DeepSeek 分析、通知统一管道。
+- `agent/app/services/course_schedule.py`: 固定课表读取和今日课程筛选。
 - `agent/app/services/homework.py`: 读取和静默刷新 `E:\作业获取项目` 的作业数据。
 - `agent/app/services/school_notices.py`: 北邮通知读取、筛选、手动隐藏和刷新。
 - `agent/app/services/user_config.py`: 用户配置的本地可信备份、快照和恢复。
@@ -76,6 +77,14 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - 数据源是 `E:\作业获取项目\homework_db.json`，可通过 `HOMEWORK_PROJECT_DIR` 改路径。
 - `POST /api/homework/refresh` 会立即运行一次静默同步：复用作业项目核心逻辑，保存 state，但跳过所有通知发送。
 - 不要改 `E:\作业获取项目` 的代码，除非用户明确要求修改那个项目。
+
+## Course Schedule 规则
+
+- Today 组件读取固定学期课表，不接学校在线刷新。
+- 本地课表文件是 `agent/app/data/course_schedule.json`，属于个人数据，不提交 Git。
+- `term.startDate` 是第 1 周周一；Agent 按北京时间计算当前周次、当天星期和课程状态。
+- `/api/school/today` 应返回今天课程、当前课程、下一节课和 `dayStatus`，不要返回样例课程误导用户。
+- 下学期只需要替换本地 `course_schedule.json`，除非数据结构变化，否则不用改前端。
 
 ## Config Backup 规则
 

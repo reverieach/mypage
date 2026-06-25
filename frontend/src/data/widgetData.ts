@@ -16,15 +16,35 @@ export type GitHubContributionsData = {
 }
 
 export type SchoolTodayData = {
+  configured?: boolean
+  date?: string
+  weekday?: number
+  weekdayLabel?: string
+  weekNumber?: number | null
+  term?: {
+    name?: string
+    startDate?: string | null
+    maxWeek?: number | null
+  }
+  dayStatus?: 'no-class' | 'before-class' | 'in-class' | 'after-class'
   courses: Array<{
+    id?: string
     name: string
-    time: string
+    start?: string | null
+    end?: string | null
+    time?: string
     location: string
+    teacher?: string
+    sections?: number[]
+    status?: 'finished' | 'current' | 'upcoming'
   }>
+  currentCourse?: SchoolTodayData['courses'][number] | null
+  nextCourse?: SchoolTodayData['courses'][number] | null
   notices: Array<{
     title: string
     time: string
   }>
+  source?: string
 }
 
 export type CodexUsageData = {

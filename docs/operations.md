@@ -204,6 +204,32 @@ If the project moves, set:
 $env:HOMEWORK_PROJECT_DIR="D:\Projects\HomeworkSentinel"
 ```
 
+## Course Schedule Setup
+
+The Today widget uses a local fixed course schedule, not a school-system refresh.
+
+Runtime file:
+
+```txt
+agent/app/data/course_schedule.json
+```
+
+The current imported schedule comes from the user's `学生个人课表_2023211892.xls` and is intentionally stored only in ignored local data.
+
+Read today's courses:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3217/api/school/today
+```
+
+Schedule rules:
+
+- `term.startDate` is the Monday of week 1.
+- `weekNumber` is calculated from `term.startDate`.
+- Courses are shown only when today's weekday matches and today's week is included in the course's `weeks`.
+- The Agent marks each course as `upcoming`, `current`, or `finished` using local Beijing time.
+- When a semester changes, replace `course_schedule.json` with the new imported schedule.
+
 ## Build And Verify
 
 Frontend:

@@ -69,7 +69,6 @@ export const appConfig: AppConfig = {
       title: 'Today',
       layout: { x: 9, y: 0, w: 3, h: 3, minW: 3, minH: 2 },
       endpoint: '/api/school/today',
-      refreshIntervalMs: 10 * 60 * 1000,
     },
     {
       id: 'codex-usage',

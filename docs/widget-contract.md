@@ -132,6 +132,38 @@ The compact homepage grid:
 
 The folder/detail view groups links by `category` and allows adding links per group.
 
+## Today Course Widget
+
+`school.today` reads `GET /api/school/today`.
+
+Expected data:
+
+```ts
+{
+  configured: boolean
+  date: string
+  weekday: number
+  weekdayLabel: string
+  weekNumber?: number | null
+  term: { name?: string; startDate?: string | null; maxWeek?: number | null }
+  dayStatus: 'no-class' | 'before-class' | 'in-class' | 'after-class'
+  courses: Array<{
+    id: string
+    name: string
+    teacher?: string
+    location: string
+    start?: string | null
+    end?: string | null
+    sections?: number[]
+    status: 'finished' | 'current' | 'upcoming'
+  }>
+  currentCourse?: Course | null
+  nextCourse?: Course | null
+}
+```
+
+The widget should not expose a manual refresh button. Course data is fixed for the term and read from the local Agent data file. It should show current/next class first, then today's timeline; if no class matches today's week and weekday, show a clear no-class state.
+
 ## Weather Widget
 
 `weather.summary` reads `GET /api/weather/summary` and refreshes through `POST /api/weather/refresh`.

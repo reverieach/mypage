@@ -15,6 +15,7 @@ from app.sample_data import (
     SCRIPTS_STATUS,
 )
 from app.services.cache import envelope, read_cached_or_sample
+from app.services.course_schedule import read_school_today
 from app.services.homework import read_due_homework, refresh_due_homework
 from app.services.link_icons import (
     LINK_ICON_DIR,
@@ -197,7 +198,10 @@ def link_icon_file(file_name: str) -> FileResponse:
 
 @router.get("/school/today")
 def school_today() -> dict[str, Any]:
-    return read_cached_or_sample("school_today.json", SCHOOL_TODAY)
+    try:
+        return envelope(read_school_today(), stale=False)
+    except Exception as exc:
+        return envelope(SCHOOL_TODAY, stale=True, error=f"school today read failed: {exc}")
 
 
 @router.get("/github/contributions")

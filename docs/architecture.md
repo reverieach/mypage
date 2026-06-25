@@ -89,6 +89,7 @@ Important files:
 - `agent/app/api/widgets.py`: public local API routes.
 - `agent/app/services/cache.py`: envelope and cache file helpers.
 - `agent/app/services/message_pipeline.py`: mail collectors, DeepSeek analysis, notification center.
+- `agent/app/services/course_schedule.py`: fixed term schedule reader and Today widget data.
 - `agent/app/services/homework.py`: BUPT homework JSON reader and silent manual refresh.
 - `agent/app/services/school_notices.py`: BUPT school notice fetch, relevance filtering, dismiss state.
 - `agent/app/services/user_config.py`: trusted local backup for user configuration and layout snapshots.
@@ -188,6 +189,7 @@ Ignored local runtime data:
 - `agent/app/data/oauth_tokens.json`
 - `agent/app/data/messages.sqlite3`
 - `agent/app/data/user_config.sqlite3`
+- `agent/app/data/course_schedule.json`
 - `agent/app/data/link_icons.sqlite3`
 - `agent/app/data/link-icons/`
 - `agent/app/data/weather_cache.json`
