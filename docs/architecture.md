@@ -157,6 +157,7 @@ School notices:
 
 - `GET /api/school/notices`
 - `POST /api/school/notices/refresh`
+- `GET /api/school/notices/status`
 - `POST /api/school/notices/{notice_id}/dismiss`
 
 Mail and notifications:
@@ -217,6 +218,18 @@ Quick links store only user intent:
 - `category`
 
 They do not store favicon URLs. Icons are derived cache data owned by the Agent.
+
+### School Notices
+
+School notices are split into three responsibilities inside `agent/app/services/school_notices.py`:
+
+- Portal auth state: `agent/app/data/school_portal_cookies.json` stores the current `JSESSIONID` plus metadata such as `capturedAt`, `lastValidatedAt`, `lastFailureType`, and the local session health window.
+- Notice collection: the collector fetches the notice list and detail pages only after it has a usable portal cookie. It treats CAS/login pages, `authserver/login`, and portal error pages as authentication failures instead of valid HTML.
+- Notice cache: `agent/app/data/school_notices.sqlite3` stores parsed notices, dismiss state, and sync state. Refresh failures keep the last successful data and expose typed status through `lastErrorType`.
+
+The browser-facing refresh button should be understood as "try to update the local notice cache now". It is not the only source of truth for portal login state. If the cookie is missing, stale, or rejected by the portal, the Agent may invoke the homework project's Playwright login helper to refresh the portal session, then retry the notice request once.
+
+`GET /api/school/notices/status` exists for diagnostics and future UI. It reports the visible notice count, total cached notices, last sync attempt, last successful sync, last error, and auth health without triggering a refresh.
 
 The frontend renders icons through a stable URL:
 

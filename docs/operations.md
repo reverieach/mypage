@@ -229,6 +229,8 @@ Common environment variables:
 ```txt
 SCHOOL_NOTICE_URL
 SCHOOL_NOTICE_COOKIE_PATH
+SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS
+SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS
 ```
 
 Manual read and refresh:
@@ -236,14 +238,34 @@ Manual read and refresh:
 ```powershell
 Invoke-RestMethod http://127.0.0.1:3217/api/school/notices
 Invoke-RestMethod -Method Post http://127.0.0.1:3217/api/school/notices/refresh
+Invoke-RestMethod http://127.0.0.1:3217/api/school/notices/status
 ```
 
 Auth notes:
 
 - Homework `valid_headers.json` is for ucloud/apiucloud homework APIs and does not authenticate `my.bupt.edu.cn`.
 - School notices use `agent/app/data/school_portal_cookies.json` by default, or `SCHOOL_NOTICE_COOKIE_PATH` when set.
-- If portal cookies are missing or expired, manual refresh may use Playwright to log into the BUPT portal and capture a fresh `JSESSIONID`.
+- The cookie file is a small auth status store, not just a raw cookie dump. It records `capturedAt`, `lastValidatedAt`, `lastFailureType`, and a local session health window.
+- BUPT currently returns a session `JSESSIONID` without a reliable expiry timestamp, so MyPage treats the session as proactively refreshable after `SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS` seconds. The default is 2 hours.
+- If portal cookies are missing, too old, or a request returns a CAS/login page, manual refresh may use Playwright to log into the BUPT portal and capture a fresh `JSESSIONID`.
 - If Playwright reports a missing browser executable, run `.\.venv\Scripts\python.exe -m playwright install chromium` from `E:\mypage\agent`.
+- Refresh failures keep the last successful SQLite notice cache. The API returns `stale=true` plus `lastErrorType` instead of falling back to sample data.
+
+Useful diagnosis:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3217/health
+Invoke-RestMethod http://127.0.0.1:3217/api/school/notices/status
+sqlite3 .\agent\app\data\school_notices.sqlite3 "select key,value,updated_at from school_notice_sync_state order by key;"
+```
+
+Common `lastErrorType` values:
+
+- `auth`: cookie expired, login page returned, or Playwright login failed.
+- `network`: the portal or local network refused/failed the request.
+- `timeout`: request exceeded the configured timeout.
+- `io`: local file or SQLite read/write problem.
+- `config`: missing or invalid local configuration.
 
 ## Local Data
 

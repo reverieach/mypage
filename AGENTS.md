@@ -89,7 +89,10 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - 学校通知读取默认使用 `SCHOOL_NOTICE_URL` 指向的北邮通知列表。
 - 不要把作业平台的 `E:\作业获取项目\valid_headers.json` 当成学校通知鉴权来源；那份文件是 ucloud/apiucloud 的 `blade-auth`/`authorization`，不能直接用于 `my.bupt.edu.cn`。
 - 学校通知使用 `agent/app/data/school_portal_cookies.json` 保存 `my.bupt.edu.cn` 门户 Cookie。
-- 门户 Cookie 缺失或过期时，当前实现会复用 `E:\作业获取项目` 的登录表单逻辑，通过 Playwright 登录门户并刷新 Cookie。
+- `school_portal_cookies.json` 同时保存认证元数据：`capturedAt`、`lastValidatedAt`、`lastFailureType` 和本地会话健康窗口。BUPT 的 `JSESSIONID` 通常是 session cookie，没有可靠过期时间，所以 Agent 会按本地窗口主动刷新。
+- 门户 Cookie 缺失、过旧或被 CAS/login 页面拒绝时，当前实现会复用 `E:\作业获取项目` 的登录表单逻辑，通过 Playwright 登录门户并刷新 Cookie，然后重试一次。
+- `GET /api/school/notices/status` 用于诊断认证状态、上次刷新、上次失败类型和缓存数量，不应触发刷新。
+- 学校通知刷新失败时保留 SQLite 中最近一次成功数据，返回 `stale=true` 和 `lastErrorType`，不要退回样例数据掩盖问题。
 - 只显示近 2 天内和学生相关度较高的通知；低相关通知和手动 dismiss 通知应隐藏。
 - 前端刷新只能拉取并更新本地 cache，不应触发任何外部通知。
 

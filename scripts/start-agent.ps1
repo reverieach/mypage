@@ -11,13 +11,44 @@ $StdoutLog = Join-Path $AgentDir "agent-server.log"
 $StderrLog = Join-Path $AgentDir "agent-server.err.log"
 $Port = 3217
 
+function Get-MyPageAgentProcesses {
+  Get-CimInstance Win32_Process |
+    Where-Object {
+      $_.CommandLine -and
+      $_.CommandLine -match "uvicorn" -and
+      $_.CommandLine -match "app\.main:app" -and
+      (
+        ($_.CommandLine -like "*$RepoRoot*") -or
+        ($_.ExecutablePath -like "$RepoRoot*")
+      )
+    }
+}
+
+function Stop-StaleMyPageAgentProcesses {
+  param([int[]] $ExceptProcessIds = @())
+
+  $processes = @(Get-MyPageAgentProcesses)
+
+  foreach ($agentProcess in $processes) {
+    if ($ExceptProcessIds -contains [int] $agentProcess.ProcessId) {
+      continue
+    }
+
+    Write-Host "Stopping stale MyPage Agent process $($agentProcess.ProcessId)..."
+    Stop-Process -Id $agentProcess.ProcessId -ErrorAction SilentlyContinue
+  }
+}
+
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
   Select-Object -First 1 -ExpandProperty OwningProcess
 
 if ($existing) {
+  Stop-StaleMyPageAgentProcesses -ExceptProcessIds @([int] $existing)
   Write-Host "MyPage Agent is already running on port $Port as PID $existing."
   exit 0
 }
+
+Stop-StaleMyPageAgentProcesses
 
 if (-not (Test-Path $PythonExe)) {
   if (-not $Install) {

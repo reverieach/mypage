@@ -34,6 +34,12 @@ SCHOOL_NOTICE_DB_PATH = Path(
 SCHOOL_NOTICE_COOKIE_PATH = Path(
     os.getenv("SCHOOL_NOTICE_COOKIE_PATH", str(DATA_DIR / "school_portal_cookies.json"))
 )
+SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS = int(
+    os.getenv("SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS", str(2 * 60 * 60))
+)
+SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS = int(
+    os.getenv("SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS", str(10 * 60))
+)
 
 DATE_PATTERN = re.compile(
     r"(?P<year>20\d{2})[年./-]\s*(?P<month>\d{1,2})[月./-]\s*(?P<day>\d{1,2})日?"
@@ -289,21 +295,62 @@ def _base_portal_headers(cookie_header: str | None = None) -> dict[str, str]:
     return headers
 
 
-def _load_portal_cookie_header() -> str:
-    if not SCHOOL_NOTICE_COOKIE_PATH.exists():
-        return ""
+def _parse_stored_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
 
-    raw = json.loads(SCHOOL_NOTICE_COOKIE_PATH.read_text(encoding="utf-8"))
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=LOCAL_TZ)
+
+    return parsed.astimezone(LOCAL_TZ)
+
+
+def _seconds_since(value: Any) -> int | None:
+    parsed = _parse_stored_datetime(value)
+
+    if not parsed:
+        return None
+
+    return max(0, int((datetime.now(LOCAL_TZ) - parsed).total_seconds()))
+
+
+def _read_portal_cookie_store() -> dict[str, Any]:
+    if not SCHOOL_NOTICE_COOKIE_PATH.exists():
+        return {}
+
+    try:
+        raw = json.loads(SCHOOL_NOTICE_COOKIE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
     if not isinstance(raw, dict):
-        return ""
+        return {}
 
+    return raw
+
+
+def _write_portal_cookie_store(raw: dict[str, Any]) -> None:
+    SCHOOL_NOTICE_COOKIE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SCHOOL_NOTICE_COOKIE_PATH.write_text(
+        json.dumps(raw, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _portal_cookie_pairs(raw: dict[str, Any]) -> list[str]:
     cookies = raw.get("cookies")
 
     if not isinstance(cookies, list):
-        return ""
+        return []
 
     pairs: list[str] = []
+
+    now_timestamp = datetime.now(LOCAL_TZ).timestamp()
 
     for cookie in cookies:
         if not isinstance(cookie, dict):
@@ -312,26 +359,117 @@ def _load_portal_cookie_header() -> str:
         name = str(cookie.get("name") or "").strip()
         value = str(cookie.get("value") or "").strip()
 
+        expires = cookie.get("expires")
+
+        if isinstance(expires, (int, float)) and expires > 0 and expires <= now_timestamp:
+            continue
+
         if name and value:
             pairs.append(f"{name}={value}")
 
-    return "; ".join(pairs)
+    return pairs
+
+
+def _portal_cookie_needs_refresh(raw: dict[str, Any]) -> bool:
+    if not _portal_cookie_pairs(raw):
+        return True
+
+    captured_age = _seconds_since(raw.get("capturedAt") or raw.get("savedAt"))
+
+    if captured_age is None:
+        return True
+
+    return captured_age >= max(
+        60,
+        SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS - SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS,
+    )
+
+
+def _load_portal_cookie_header(*, require_fresh: bool = True) -> str:
+    raw = _read_portal_cookie_store()
+
+    if require_fresh and _portal_cookie_needs_refresh(raw):
+        return ""
+
+    return "; ".join(_portal_cookie_pairs(raw))
+
+
+def _update_portal_cookie_metadata(**fields: Any) -> None:
+    raw = _read_portal_cookie_store()
+    raw.setdefault("schemaVersion", 2)
+    raw.setdefault("source", "my.bupt.edu.cn")
+    raw["sessionMaxAgeSeconds"] = SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS
+    raw.update(fields)
+    _write_portal_cookie_store(raw)
+
+
+def _record_portal_auth_failure(kind: str, message: str) -> None:
+    try:
+        _update_portal_cookie_metadata(
+            lastFailureAt=now_iso(),
+            lastFailureType=kind,
+            lastFailure=message[:500],
+        )
+    except OSError:
+        pass
+
+
+def _mark_portal_cookie_valid() -> None:
+    try:
+        _update_portal_cookie_metadata(
+            lastValidatedAt=now_iso(),
+            lastFailureAt=None,
+            lastFailureType="",
+            lastFailure="",
+        )
+    except OSError:
+        pass
 
 
 def _save_portal_cookies(cookies: list[dict[str, Any]]) -> None:
-    SCHOOL_NOTICE_COOKIE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SCHOOL_NOTICE_COOKIE_PATH.write_text(
-        json.dumps(
-            {
-                "capturedAt": now_iso(),
-                "source": "my.bupt.edu.cn",
-                "cookies": cookies,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    _write_portal_cookie_store(
+        {
+            "schemaVersion": 2,
+            "capturedAt": now_iso(),
+            "lastValidatedAt": now_iso(),
+            "lastFailureAt": None,
+            "lastFailureType": "",
+            "lastFailure": "",
+            "source": "my.bupt.edu.cn",
+            "sessionMaxAgeSeconds": SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS,
+            "cookies": cookies,
+        }
     )
+
+
+def get_portal_auth_status() -> dict[str, Any]:
+    raw = _read_portal_cookie_store()
+    pairs = _portal_cookie_pairs(raw)
+    captured_age = _seconds_since(raw.get("capturedAt") or raw.get("savedAt"))
+    validated_age = _seconds_since(raw.get("lastValidatedAt"))
+    needs_refresh = _portal_cookie_needs_refresh(raw)
+
+    return {
+        "hasCookie": bool(pairs),
+        "state": "needs_refresh" if needs_refresh else "ready",
+        "cookieNames": [
+            pair.split("=", 1)[0]
+            for pair in pairs
+        ],
+        "capturedAt": raw.get("capturedAt") or raw.get("savedAt"),
+        "capturedAgeSeconds": captured_age,
+        "lastValidatedAt": raw.get("lastValidatedAt"),
+        "lastValidatedAgeSeconds": validated_age,
+        "sessionMaxAgeSeconds": SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS,
+        "nextRefreshInSeconds": (
+            None
+            if captured_age is None
+            else max(0, SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS - captured_age)
+        ),
+        "lastFailureAt": raw.get("lastFailureAt"),
+        "lastFailureType": raw.get("lastFailureType") or None,
+        "lastFailure": raw.get("lastFailure") or None,
+    }
 
 
 def _capture_portal_cookies() -> str:
@@ -362,44 +500,48 @@ def _capture_portal_cookies() -> str:
     )
     cookies: list[dict[str, Any]] = []
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=settings.playwright_headless)
-        context = browser.new_context()
-        page = context.new_page()
-
-        try:
-            page.goto(login_url, wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(1200)
-
-            if page.locator("#loginIframe").count() > 0:
-                page.wait_for_selector("#loginIframe", timeout=20000)
-                scope = page.frame_locator("#loginIframe")
-            else:
-                scope = page
-
-            _fill_login_form(scope, settings.school_id, settings.school_pwd)
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=settings.playwright_headless)
+            context = browser.new_context()
+            page = context.new_page()
 
             try:
-                page.wait_for_load_state("networkidle", timeout=20000)
-            except Exception:
-                page.wait_for_timeout(3000)
+                page.goto(login_url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(1200)
 
-            if "my.bupt.edu.cn" not in page.url:
-                page.goto(SCHOOL_NOTICE_URL, wait_until="domcontentloaded", timeout=30000)
+                if page.locator("#loginIframe").count() > 0:
+                    page.wait_for_selector("#loginIframe", timeout=20000)
+                    scope = page.frame_locator("#loginIframe")
+                else:
+                    scope = page
 
-            try:
-                page.wait_for_load_state("networkidle", timeout=10000)
-            except Exception:
-                page.wait_for_timeout(1500)
+                _fill_login_form(scope, settings.school_id, settings.school_pwd)
 
-            body_text = page.locator("body").inner_text(timeout=5000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=20000)
+                except Exception:
+                    page.wait_for_timeout(3000)
 
-            if "系统发生错误" in body_text or "栏目不存在" in body_text:
-                raise PermissionError("school portal login did not reach the notice list")
+                if "my.bupt.edu.cn" not in page.url:
+                    page.goto(SCHOOL_NOTICE_URL, wait_until="domcontentloaded", timeout=30000)
 
-            cookies = context.cookies("http://my.bupt.edu.cn")
-        finally:
-            browser.close()
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    page.wait_for_timeout(1500)
+
+                body_text = page.locator("body").inner_text(timeout=5000)
+
+                if "系统发生错误" in body_text or "栏目不存在" in body_text:
+                    raise PermissionError("school portal login did not reach the notice list")
+
+                cookies = context.cookies("http://my.bupt.edu.cn")
+            finally:
+                browser.close()
+    except Exception as exc:
+        _record_portal_auth_failure("login_failed", str(exc))
+        raise
 
     if not any(cookie.get("name") == "JSESSIONID" for cookie in cookies):
         raise PermissionError("school portal login did not return a JSESSIONID cookie")
@@ -410,6 +552,10 @@ def _capture_portal_cookies() -> str:
         for cookie in cookies
         if cookie.get("name") and cookie.get("value")
     )
+
+
+def _refresh_portal_cookie_header() -> str:
+    return _capture_portal_cookies()
 
 
 def _decode_response(raw: bytes, content_type: str) -> str:
@@ -434,22 +580,58 @@ def _fetch_text(url: str, headers: dict[str, str], timeout: float) -> str:
         final_url = response.geturl()
         text = _decode_response(raw, response.headers.get("Content-Type", ""))
 
-    if "system/resource/code/auth/clogin.jsp" in final_url or "系统发生错误" in text:
-        raise PermissionError("school portal cookie expired")
+    if _is_portal_auth_failure(final_url, text):
+        message = "school portal cookie expired or login page returned"
+        _record_portal_auth_failure("expired", message)
+        raise PermissionError(message)
+
+    if urllib.parse.urlparse(final_url).netloc.endswith("my.bupt.edu.cn"):
+        _mark_portal_cookie_valid()
 
     return text
+
+
+def _is_portal_auth_failure(final_url: str, text: str) -> bool:
+    normalized_url = final_url.lower()
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.IGNORECASE | re.DOTALL)
+    title = _normalize_space(html.unescape(title_match.group(1))) if title_match else ""
+    auth_indicators = (
+        "system/resource/code/auth/clogin.jsp",
+        "authserver/login",
+        "cas login",
+        "统一身份认证",
+        "id=\"casloginform\"",
+        "name=\"username\"",
+        "name=\"password\"",
+    )
+    normalized_text = text.lower()
+
+    if "系统发生错误" in text:
+        return True
+
+    if (
+        "auth.bupt.edu.cn" in normalized_url
+        or "authserver/login" in normalized_url
+        or "system/resource/code/auth/clogin.jsp" in normalized_url
+    ):
+        return True
+
+    if title.lower() in {"cas login", "用户登录"}:
+        return True
+
+    return any(indicator in normalized_text for indicator in auth_indicators)
 
 
 def _fetch_portal_text(url: str, timeout: float) -> str:
     cookie_header = _load_portal_cookie_header()
 
     if not cookie_header:
-        cookie_header = _capture_portal_cookies()
+        cookie_header = _refresh_portal_cookie_header()
 
     try:
         return _fetch_text(url, _base_portal_headers(cookie_header), timeout)
     except PermissionError:
-        cookie_header = _capture_portal_cookies()
+        cookie_header = _refresh_portal_cookie_header()
         return _fetch_text(url, _base_portal_headers(cookie_header), timeout)
 
 
@@ -820,7 +1002,9 @@ def _read_db_view(days: int = 2) -> dict[str, Any]:
             "SELECT COUNT(*) AS count FROM school_notices"
         ).fetchone()["count"]
         last_sync_at = _get_sync_state(connection, "last_sync_at")
+        last_attempt_at = _get_sync_state(connection, "last_attempt_at")
         last_error = _get_sync_state(connection, "last_error")
+        last_error_type = _get_sync_state(connection, "last_error_type")
 
     return {
         "windowLabel": f"近{days}天",
@@ -830,7 +1014,10 @@ def _read_db_view(days: int = 2) -> dict[str, Any]:
         "candidateCount": int(candidate_count or 0),
         "totalCount": int(total_count or 0),
         "lastSyncAt": last_sync_at or None,
+        "lastAttemptAt": last_attempt_at or None,
         "lastError": last_error or None,
+        "lastErrorType": last_error_type or None,
+        "authStatus": get_portal_auth_status(),
     }
 
 
@@ -937,13 +1124,32 @@ def _save_candidate(
     )
 
 
-def read_school_notices(days: int = 2) -> dict[str, Any]:
+def read_school_notices(days: int = 2, *, refresh_if_empty: bool = True) -> dict[str, Any]:
     data = _read_db_view(days=days)
 
-    if not data["totalCount"]:
+    if refresh_if_empty and not data["totalCount"]:
         return refresh_school_notices(days=days)
 
     return data
+
+
+def _classify_refresh_error(exc: Exception) -> str:
+    if isinstance(exc, PermissionError):
+        return "auth"
+
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+
+    if isinstance(exc, urllib.error.URLError):
+        return "network"
+
+    if isinstance(exc, OSError):
+        return "io"
+
+    if isinstance(exc, ValueError):
+        return "config"
+
+    return "unknown"
 
 
 def refresh_school_notices(days: int = 2) -> dict[str, Any]:
@@ -951,6 +1157,10 @@ def refresh_school_notices(days: int = 2) -> dict[str, Any]:
     start_date = (now - timedelta(days=days)).date()
     timeout = float(os.getenv("SCHOOL_NOTICE_TIMEOUT_SECONDS", "20"))
     ensure_schema()
+
+    with _connect() as connection:
+        _set_sync_state(connection, "last_attempt_at", now_iso())
+        connection.commit()
 
     try:
         list_html = _fetch_portal_text(SCHOOL_NOTICE_URL, timeout)
@@ -987,17 +1197,35 @@ def refresh_school_notices(days: int = 2) -> dict[str, Any]:
 
             _set_sync_state(connection, "last_sync_at", now_iso())
             _set_sync_state(connection, "last_error", "")
+            _set_sync_state(connection, "last_error_type", "")
             _set_sync_state(connection, "last_candidate_count", str(len(candidates)))
             connection.commit()
     except Exception as exc:
         with _connect() as connection:
             _set_sync_state(connection, "last_error", str(exc))
+            _set_sync_state(connection, "last_error_type", _classify_refresh_error(exc))
             connection.commit()
         raise
 
     data = _read_db_view(days=days)
     data["refreshed"] = True
     return data
+
+
+def get_school_notice_status(days: int = 2) -> dict[str, Any]:
+    data = read_school_notices(days=days, refresh_if_empty=False)
+
+    return {
+        "sourceUrl": data["sourceUrl"],
+        "lastSyncAt": data["lastSyncAt"],
+        "lastAttemptAt": data["lastAttemptAt"],
+        "lastError": data["lastError"],
+        "lastErrorType": data["lastErrorType"],
+        "candidateCount": data["candidateCount"],
+        "totalCount": data["totalCount"],
+        "visibleCount": len(data["items"]),
+        "authStatus": data["authStatus"],
+    }
 
 
 def dismiss_school_notice(notice_id: str) -> dict[str, Any]:

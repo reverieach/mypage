@@ -33,6 +33,7 @@ from app.services.message_pipeline import (
 )
 from app.services.school_notices import (
     dismiss_school_notice,
+    get_school_notice_status,
     read_school_notices,
     refresh_school_notices,
 )
@@ -285,11 +286,19 @@ def school_notices() -> dict[str, Any]:
     try:
         return envelope(read_school_notices(days=2), stale=False)
     except PermissionError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=str(exc))
+        return envelope(read_school_notices(days=2, refresh_if_empty=False), stale=True, error=str(exc))
     except OSError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices read failed: {exc}")
+        return envelope(
+            read_school_notices(days=2, refresh_if_empty=False),
+            stale=True,
+            error=f"school notices read failed: {exc}",
+        )
     except ValueError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices parse failed: {exc}")
+        return envelope(
+            read_school_notices(days=2, refresh_if_empty=False),
+            stale=True,
+            error=f"school notices parse failed: {exc}",
+        )
 
 
 @router.post("/school/notices/refresh")
@@ -297,15 +306,49 @@ def school_notices_refresh() -> dict[str, Any]:
     try:
         return envelope(refresh_school_notices(days=2), stale=False)
     except PermissionError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=str(exc))
+        return envelope(read_school_notices(days=2, refresh_if_empty=False), stale=True, error=str(exc))
     except TimeoutError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices refresh timed out: {exc}")
+        return envelope(
+            read_school_notices(days=2, refresh_if_empty=False),
+            stale=True,
+            error=f"school notices refresh timed out: {exc}",
+        )
     except OSError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices refresh failed: {exc}")
+        return envelope(
+            read_school_notices(days=2, refresh_if_empty=False),
+            stale=True,
+            error=f"school notices refresh failed: {exc}",
+        )
     except RuntimeError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=str(exc))
+        return envelope(read_school_notices(days=2, refresh_if_empty=False), stale=True, error=str(exc))
     except ValueError as exc:
-        return envelope(SCHOOL_NOTICES, stale=True, error=f"school notices refresh config failed: {exc}")
+        return envelope(
+            read_school_notices(days=2, refresh_if_empty=False),
+            stale=True,
+            error=f"school notices refresh config failed: {exc}",
+        )
+
+
+@router.get("/school/notices/status")
+def school_notices_status() -> dict[str, Any]:
+    try:
+        return envelope(get_school_notice_status(days=2), stale=False)
+    except Exception as exc:
+        return envelope(
+            {
+                "sourceUrl": "",
+                "lastSyncAt": None,
+                "lastAttemptAt": None,
+                "lastError": str(exc),
+                "lastErrorType": "status",
+                "candidateCount": 0,
+                "totalCount": 0,
+                "visibleCount": 0,
+                "authStatus": {"state": "unknown", "hasCookie": False},
+            },
+            stale=True,
+            error=f"school notices status failed: {exc}",
+        )
 
 
 @router.post("/school/notices/{notice_id}/dismiss")

@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import os
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -16,6 +17,7 @@ app = FastAPI(title="MyPage Agent")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 FRONTEND_INDEX = FRONTEND_DIST / "index.html"
+STARTED_AT = now_iso()
 
 app.add_middleware(
     CORSMiddleware,
@@ -98,5 +100,13 @@ async def stop_background_tasks() -> None:
 
 
 @app.get("/health")
-def health() -> dict[str, bool | str]:
-    return {"ok": True, "updatedAt": now_iso()}
+def health() -> dict[str, bool | int | str]:
+    return {
+        "ok": True,
+        "updatedAt": now_iso(),
+        "startedAt": STARTED_AT,
+        "pid": os.getpid(),
+        "python": sys.executable,
+        "repoRoot": str(REPO_ROOT),
+        "dataDir": str(REPO_ROOT / "agent" / "app" / "data"),
+    }
