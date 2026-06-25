@@ -1,10 +1,33 @@
-import { Copy, ExternalLink, FileUp, FolderOpen, KeyRound, Link2, Send, Smartphone, Trash2, Wifi } from 'lucide-react'
-import { useRef, useState } from 'react'
+import {
+  Check,
+  Copy,
+  File,
+  FileText,
+  FileUp,
+  Image,
+  KeyRound,
+  Link2,
+  QrCode,
+  Send,
+  Smartphone,
+  Trash2,
+  Wifi,
+} from 'lucide-react'
+import QRCode from 'qrcode'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 
 import { Button } from '../../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from '../../components/ui/dialog'
 import type { DataWidgetConfig } from '../../config/types'
 import { postAgentEnvelope, postAgentFormEnvelope } from '../../data/apiClient'
-import { type LanShareStatusData, useAgentWidget } from '../../data/widgetData'
+import { type LanShareItem, type LanShareStatusData, useAgentWidget } from '../../data/widgetData'
+import { cn } from '../../utils/cn'
 import { WidgetError, WidgetLoading, WidgetMeta } from '../WidgetStatus'
 
 function formatSize(size: number) {
@@ -23,6 +46,21 @@ function formatSize(size: number) {
   return `${size} B`
 }
 
+function formatTime(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
 function fileHref(id: string) {
   return `http://127.0.0.1:3217/api/share/files/${encodeURIComponent(id)}`
 }
@@ -31,11 +69,172 @@ async function copyText(value: string) {
   await navigator.clipboard.writeText(value)
 }
 
+function ShareItemIcon({ item }: { item: LanShareItem }) {
+  if (item.kind === 'text') {
+    return <FileText className="h-4 w-4" />
+  }
+
+  if (item.isImage) {
+    return <Image className="h-4 w-4" />
+  }
+
+  return <File className="h-4 w-4" />
+}
+
+function ShareItemCard({
+  item,
+  onCopy,
+  onDelete,
+}: {
+  item: LanShareItem
+  onCopy: (value: string) => void
+  onDelete: (id: string) => void
+}) {
+  const title = item.kind === 'text' ? item.title : item.originalName ?? item.title
+
+  return (
+    <div className="group rounded-2xl bg-white/8 p-2.5 transition hover:bg-white/11">
+      {item.kind === 'file' && item.isImage ? (
+        <a
+          href={fileHref(item.id)}
+          target="_blank"
+          rel="noreferrer"
+          className="mb-2 block overflow-hidden rounded-xl bg-white/8"
+        >
+          <img
+            src={fileHref(item.id)}
+            alt={title}
+            className="h-24 w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+            loading="lazy"
+          />
+        </a>
+      ) : null}
+
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-white/78">
+            <span className="shrink-0 text-white/42">
+              <ShareItemIcon item={item} />
+            </span>
+            <span className="truncate">{title}</span>
+          </div>
+          <p className="mt-0.5 truncate text-[11px] text-white/40">
+            {item.source} · {formatTime(item.createdAt)}
+            {item.size ? ` · ${formatSize(item.size)}` : ''}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="shrink-0 rounded-full p-1 text-white/28 opacity-0 transition hover:bg-white/12 hover:text-white/76 group-hover:opacity-100"
+          onClick={() => onDelete(item.id)}
+          title="Delete"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {item.kind === 'text' ? (
+        <button
+          type="button"
+          className="mt-2 line-clamp-3 w-full rounded-xl bg-white/7 px-2.5 py-2 text-left text-xs leading-5 text-white/62 transition hover:bg-white/11 hover:text-white/82"
+          onClick={() => onCopy(item.text ?? '')}
+          title="Copy text"
+        >
+          {item.text}
+        </button>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <a
+            href={fileHref(item.id)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-8 flex-1 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/68 transition hover:bg-white/13 hover:text-white"
+          >
+            Open
+          </a>
+          <a
+            href={fileHref(item.id)}
+            download={item.originalName ?? title}
+            className="inline-flex min-h-8 flex-1 items-center justify-center rounded-xl bg-white/8 px-2 text-xs font-medium text-white/68 transition hover:bg-white/13 hover:text-white"
+          >
+            Save
+          </a>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ShareQrDialog({ url, pin }: { url: string; pin?: string | null }) {
+  const [qrDataUrl, setQrDataUrl] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+
+    QRCode.toDataURL(url, {
+      width: 280,
+      margin: 1,
+      color: {
+        dark: '#111827',
+        light: '#ffffff',
+      },
+    }).then((dataUrl) => {
+      if (!cancelled) {
+        setQrDataUrl(dataUrl)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [url])
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/70 transition hover:bg-white/12 hover:text-white"
+          title="Show QR code"
+        >
+          <QrCode className="h-4 w-4" />
+        </button>
+      </DialogTrigger>
+      <DialogContent className="w-[360px]">
+        <DialogTitle className="pr-10 text-xl font-semibold">Scan on iPhone</DialogTitle>
+        <DialogDescription className="mt-1 text-sm text-white/48">
+          用 iOS 相机扫二维码打开手机端 Share 页面。
+        </DialogDescription>
+        <div className="mt-5 rounded-[26px] bg-white p-4">
+          {qrDataUrl ? (
+            <img src={qrDataUrl} alt={url} className="mx-auto h-64 w-64" />
+          ) : (
+            <div className="grid h-64 w-full place-items-center text-slate-500">Generating...</div>
+          )}
+        </div>
+        <div className="mt-4 rounded-2xl bg-white/8 p-3">
+          <div className="flex items-center gap-2 text-sm text-white/72">
+            <Link2 className="h-4 w-4 shrink-0 text-white/38" />
+            <span className="truncate">{url}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2 text-sm text-white/72">
+            <span>PIN {pin ?? '------'}</span>
+            <Button type="button" size="sm" variant="ghost" onClick={() => void copyText(pin ?? '')}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ShareWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<LanShareStatusData>(config)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function sendText() {
@@ -60,7 +259,7 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
     }
   }
 
-  async function uploadFiles(files: FileList | null) {
+  async function uploadFiles(files: FileList | File[] | null) {
     if (!files?.length) {
       return
     }
@@ -77,14 +276,15 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         }
       }
 
-      setMessage('Uploaded')
+      setMessage(files.length === 1 ? 'Uploaded' : `${files.length} uploaded`)
       void query.refetch()
     } finally {
       setBusy(false)
+      setIsDragging(false)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
-      window.setTimeout(() => setMessage(''), 1200)
+      window.setTimeout(() => setMessage(''), 1400)
     }
   }
 
@@ -98,6 +298,27 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
     }
   }
 
+  async function deleteShareItem(id: string) {
+    setBusy(true)
+    try {
+      await postAgentEnvelope(`/api/share/items/${encodeURIComponent(id)}/delete`)
+      void query.refetch()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+    setIsDragging(true)
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    void uploadFiles(event.dataTransfer.files)
+  }
+
   if (query.isLoading) {
     return <WidgetLoading label="Checking share" />
   }
@@ -108,7 +329,7 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
 
   const data = query.data.data
   const url = data.primaryUrl || data.localUrl
-  const recentItems = data.items.slice(0, 4)
+  const recentItems = data.items
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
@@ -127,15 +348,7 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
             <span className="truncate">{url}</span>
           </button>
         </div>
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/70 transition hover:bg-white/12 hover:text-white"
-          title="Open Share"
-        >
-          <ExternalLink className="h-4 w-4" />
-        </a>
+        <ShareQrDialog url={url} pin={data.pin} />
       </div>
 
       <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -153,7 +366,30 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+      <div
+        className={cn(
+          'grid min-h-[82px] place-items-center rounded-2xl border border-dashed border-white/14 bg-white/7 px-3 py-3 text-center transition',
+          isDragging ? 'border-emerald-200/70 bg-emerald-200/12 text-white' : 'text-white/54',
+        )}
+        onDragEnter={handleDragOver}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+      >
+        <div>
+          <FileUp className="mx-auto mb-1.5 h-5 w-5 text-white/42" />
+          <p className="text-sm font-medium">{isDragging ? 'Drop to upload' : 'Drop files here'}</p>
+          <button
+            type="button"
+            className="mt-1 text-xs text-white/44 transition hover:text-white/76"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            or choose files
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[1fr_auto] gap-2">
         <input
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -168,15 +404,6 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         <Button type="button" size="icon" variant="ghost" disabled={busy} onClick={sendText}>
           <Send className="h-4 w-4" />
         </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          disabled={busy}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <FileUp className="h-4 w-4" />
-        </Button>
         <input
           ref={fileInputRef}
           className="hidden"
@@ -189,36 +416,12 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         {recentItems.length ? (
           recentItems.map((item) => (
-            <div key={item.id} className="rounded-2xl bg-white/8 px-3 py-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-white/78">
-                    {item.kind === 'text' ? item.title : item.originalName ?? item.title}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-white/40">
-                    {item.source} {item.size ? `· ${formatSize(item.size)}` : ''}
-                  </p>
-                </div>
-                {item.kind === 'file' ? (
-                  <a
-                    href={fileHref(item.id)}
-                    className="shrink-0 rounded-full p-1 text-white/44 transition hover:bg-white/12 hover:text-white"
-                    title="Open file"
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="shrink-0 rounded-full p-1 text-white/44 transition hover:bg-white/12 hover:text-white"
-                    onClick={() => void copyText(item.text ?? '')}
-                    title="Copy text"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </div>
+            <ShareItemCard
+              key={item.id}
+              item={item}
+              onCopy={(value) => void copyText(value)}
+              onDelete={(id) => void deleteShareItem(id)}
+            />
           ))
         ) : (
           <div className="flex h-full items-center justify-center rounded-2xl bg-white/8 p-4 text-center text-sm text-white/44">
@@ -233,7 +436,12 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
       <div className="flex items-center justify-between gap-2">
         <WidgetMeta envelope={query.data} />
         <div className="flex items-center gap-2 text-[11px] text-white/46">
-          {message ? <span>{message}</span> : null}
+          {message ? (
+            <span className="inline-flex items-center gap-1">
+              <Check className="h-3 w-3" />
+              {message}
+            </span>
+          ) : null}
           <button
             type="button"
             className="rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/72"

@@ -82,13 +82,21 @@ Status from the LAN service:
 Invoke-RestMethod http://127.0.0.1:3220/api/share/status
 ```
 
-The Share widget shows the LAN URL, usually similar to:
+The Share widget shows the LAN URL and a QR button, usually similar to:
 
 ```txt
 http://10.x.x.x:3220/share
 ```
 
-Open that URL on the phone while the phone and PC are on the same network. Enter the 6-digit PIN shown in the desktop widget. The phone receives a bearer token that expires after 7 days by default.
+Scan the QR code with the iOS camera while the phone and PC are on the same network. Enter the 6-digit PIN shown in the desktop widget. The phone receives a bearer token that expires after 7 days by default, so the same phone browser normally does not need the PIN again until the token expires, the PIN is reset, or the phone browser data is cleared.
+
+PIN and IP behavior:
+
+- The PIN is stored in `E:\MyPageShare\lan_share.sqlite3` and stays stable across page refreshes and service restarts.
+- `POST /api/share/reset-pin` resets the PIN and invalidates existing phone tokens.
+- The LAN URL is detected from the PC's current IPv4 addresses each time `/api/share/status` is read.
+- On the same Wi-Fi or wired network, the LAN IP usually stays unchanged.
+- The LAN IP may change after switching networks, reconnecting VPN, changing hotspot, rebooting the router, DHCP renewal, or changing network adapters.
 
 Runtime data:
 
@@ -96,6 +104,12 @@ Runtime data:
 E:\MyPageShare\lan_share.sqlite3
 E:\MyPageShare\files\
 ```
+
+Desktop behavior:
+
+- Drag files into the Share widget drop area to upload them to the shared area.
+- Images show thumbnails in the widget/detail view; other files show file cards with open/save actions.
+- The QR button replaces the old "open share" affordance because the useful destination is the phone, not another desktop tab.
 
 Useful environment variables:
 
