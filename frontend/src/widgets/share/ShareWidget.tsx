@@ -1,7 +1,7 @@
 import {
   Check,
   Copy,
-  File,
+  File as FileIcon,
   FileText,
   FileUp,
   FolderOpen,
@@ -15,7 +15,7 @@ import {
   Wifi,
 } from 'lucide-react'
 import QRCode from 'qrcode'
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
 
 import { Button } from '../../components/ui/button'
 import {
@@ -70,6 +70,39 @@ async function copyText(value: string) {
   await navigator.clipboard.writeText(value)
 }
 
+function clipboardImageFiles(event: ClipboardEvent<HTMLInputElement>) {
+  const files: File[] = []
+  const items = Array.from(event.clipboardData.items)
+
+  for (const item of items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+      continue
+    }
+
+    const file = item.getAsFile()
+
+    if (!file) {
+      continue
+    }
+
+    const extension =
+      file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
+    const name =
+      file.name ||
+      `clipboard-image-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`
+
+    files.push(new globalThis.File([file], name, { type: file.type }))
+  }
+
+  if (files.length) {
+    return files
+  }
+
+  return Array.from(event.clipboardData.files).filter((file) =>
+    file.type.startsWith('image/'),
+  )
+}
+
 function ShareItemIcon({ item }: { item: LanShareItem }) {
   if (item.kind === 'text') {
     return <FileText className="h-4 w-4" />
@@ -79,7 +112,7 @@ function ShareItemIcon({ item }: { item: LanShareItem }) {
     return <Image className="h-4 w-4" />
   }
 
-  return <File className="h-4 w-4" />
+  return <FileIcon className="h-4 w-4" />
 }
 
 function ShareItemCard({
@@ -152,7 +185,7 @@ function ShareItemCard({
               />
             ) : (
               <span className="grid h-full place-items-center text-white/34">
-                <File className="h-10 w-10" />
+                <FileIcon className="h-10 w-10" />
               </span>
             )}
           </button>
@@ -379,6 +412,17 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
     void uploadFiles(event.dataTransfer.files)
   }
 
+  function handlePaste(event: ClipboardEvent<HTMLInputElement>) {
+    const imageFiles = clipboardImageFiles(event)
+
+    if (!imageFiles.length) {
+      return
+    }
+
+    event.preventDefault()
+    void uploadFiles(imageFiles)
+  }
+
   if (query.isLoading) {
     return <WidgetLoading label="Checking share" />
   }
@@ -453,6 +497,7 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         <input
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onPaste={handlePaste}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
               void sendText()
