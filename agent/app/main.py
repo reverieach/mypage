@@ -17,6 +17,7 @@ app = FastAPI(title="MyPage Agent")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 FRONTEND_INDEX = FRONTEND_DIST / "index.html"
+FRONTEND_FAVICON = FRONTEND_DIST / "favicon.svg"
 STARTED_AT = now_iso()
 
 app.add_middleware(
@@ -71,6 +72,18 @@ def frontend_index():
         """,
         status_code=503,
     )
+
+
+@app.get("/favicon.svg", response_model=None)
+def frontend_favicon():
+    if FRONTEND_FAVICON.exists():
+        return FileResponse(
+            FRONTEND_FAVICON,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
+    return HTMLResponse("", status_code=404)
 
 
 async def mail_sync_loop() -> None:
