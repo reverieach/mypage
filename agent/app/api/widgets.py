@@ -37,6 +37,7 @@ from app.services.lan_share import (
 )
 from app.services.message_pipeline import (
     dismiss_mail_message,
+    mail_messages,
     mail_summary,
     microsoft_auth_status,
     notification_center,
@@ -389,9 +390,19 @@ def mail_summary_endpoint() -> dict[str, Any]:
     return envelope(mail_summary(), stale=False)
 
 
+@router.get("/mail/messages")
+def mail_messages_endpoint(view: str = "priority", limit: int = 100) -> dict[str, Any]:
+    try:
+        return envelope(mail_messages(view=view, limit=limit), stale=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/mail/refresh")
 def mail_refresh_endpoint() -> dict[str, Any]:
-    return envelope(refresh_mail(), stale=False)
+    data = refresh_mail()
+    errors = [str(error) for error in data.get("errors", []) if error]
+    return envelope(data, stale=bool(errors), error="; ".join(errors) or None)
 
 
 @router.post("/mail/messages/{message_id}/dismiss")

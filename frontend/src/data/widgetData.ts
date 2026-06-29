@@ -192,8 +192,14 @@ export type NotificationCenterData = {
 export type MailSummaryData = {
   configured: boolean
   error?: string | null
+  view?: 'priority' | 'unread'
   importantCount: number
   hiddenCount?: number
+  counts?: {
+    priority: number
+    unread: number
+    filtered: number
+  }
   accounts: Array<{
     id: string
     label: string
@@ -217,6 +223,8 @@ export type MailSummaryData = {
     displayReason: string
     webLink?: string | null
     analyzedAt?: string | null
+    isPriority?: boolean
+    filterReason?: string | null
   }>
 }
 

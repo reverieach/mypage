@@ -230,6 +230,7 @@ School notices:
 Mail and notifications:
 
 - `GET /api/mail/summary`
+- `GET /api/mail/messages?view=priority|unread&limit=100`
 - `POST /api/mail/refresh`
 - `POST /api/mail/messages/{message_id}/dismiss`
 - `GET /api/notifications`
@@ -334,8 +335,12 @@ Mail analysis:
 
 - DeepSeek analyzes new messages when `DEEPSEEK_API_KEY` is present.
 - A local keyword fallback keeps the UI usable without DeepSeek.
-- Low-signal mail, read mail, and manually dismissed mail are hidden from the Mail widget.
+- A versioned local safety policy runs after AI analysis. Billing, security, account, and service-change mail cannot remain low priority because of a single model decision.
+- The compact widget shows priority unread mail. The expanded widget can switch between priority and all non-dismissed unread mail.
+- IMAP collection reconciles recent, server-unread, and locally known unread UIDs so the expanded view is not limited to the newest fetch batch.
+- Low-signal mail and manually dismissed mail are hidden from the compact Mail widget. A manual dismiss is local and permanent in MyPage; it does not mutate the mailbox.
 - Important mail is copied into the shared notification center.
+- IMAP accounts can opt into conservative marketing cleanup with `marketingAction: "trash"`. Only messages where the AI result and deterministic marketing rules agree are marked read and moved to the configured IMAP trash folder. MyPage never expunges them permanently.
 
 ### Homework
 

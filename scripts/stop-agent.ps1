@@ -35,5 +35,5 @@ foreach ($pidValue in $allProcessIds) {
   }
 
   Write-Host "Stopping MyPage Agent process $pidValue ($($process.ProcessName))..."
-  Stop-Process -Id $pidValue
+  Stop-Process -Id $pidValue -ErrorAction SilentlyContinue
 }

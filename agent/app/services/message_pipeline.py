@@ -28,9 +28,12 @@ OAUTH_TOKENS_PATH = DATA_DIR / "oauth_tokens.json"
 
 MAX_BODY_CHARS = int(os.getenv("MAIL_MAX_BODY_CHARS", "6000"))
 DEFAULT_MAX_FETCH = int(os.getenv("MAIL_MAX_FETCH", "20"))
+DEFAULT_MAX_UNREAD_FETCH = int(os.getenv("MAIL_MAX_UNREAD_FETCH", "100"))
 DEFAULT_SYNC_LOOKBACK_DAYS = int(os.getenv("MAIL_SYNC_LOOKBACK_DAYS", "14"))
 HOMEWORK_MONITOR_PREFIX = "[Homework Monitor]"
 LOW_SIGNAL_CATEGORIES = {"shopping", "promotion", "newsletter", "spam", "marketing"}
+ANALYSIS_POLICY_VERSION = 1
+MARKETING_ACTIONS = {"keep", "trash"}
 MAIL_VISIBLE_FILTER_SQL = """
     NOT (
       LOWER(m.account_email) LIKE '%@qq.com'
@@ -116,10 +119,13 @@ class MailAccount:
     folder: str = "INBOX"
     use_ssl: bool = True
     max_fetch: int = DEFAULT_MAX_FETCH
+    max_unread_fetch: int = DEFAULT_MAX_UNREAD_FETCH
     web_search_url: str = ""
     client_id: str = ""
     tenant: str = "consumers"
     forwarded_sources: tuple[ForwardedSource, ...] = ()
+    marketing_action: str = "keep"
+    trash_folder: str = ""
 
 
 @dataclass(frozen=True)
@@ -213,6 +219,18 @@ def ensure_schema() -> None:
               message_id TEXT PRIMARY KEY,
               dismissed_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS mail_actions (
+              message_id TEXT NOT NULL,
+              action TEXT NOT NULL,
+              status TEXT NOT NULL,
+              reason TEXT NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              last_error TEXT,
+              attempted_at TEXT NOT NULL,
+              completed_at TEXT,
+              PRIMARY KEY (message_id, action)
+            );
             """
         )
         _ensure_column(
@@ -220,6 +238,26 @@ def ensure_schema() -> None:
             "messages",
             "is_read",
             "INTEGER NOT NULL DEFAULT 0",
+        )
+        _ensure_column(
+            connection,
+            "message_analysis",
+            "policy_version",
+            "INTEGER NOT NULL DEFAULT 0",
+        )
+        connection.execute(
+            """
+            UPDATE notification_items
+            SET title = (
+              SELECT m.title FROM messages m
+              WHERE m.id = notification_items.source_item_id
+            )
+            WHERE source = 'mail'
+              AND EXISTS (
+                SELECT 1 FROM messages m
+                WHERE m.id = notification_items.source_item_id
+              )
+            """
         )
 
 
@@ -309,6 +347,9 @@ def load_mail_accounts() -> list[MailAccount]:
 
         provider = str(item.get("provider") or "imap")
         forwarded_sources = _parse_forwarded_sources(item)
+        marketing_action = str(item.get("marketingAction") or "keep").lower()
+        if marketing_action not in MARKETING_ACTIONS:
+            marketing_action = "keep"
 
         password = item.get("password")
         password_env = item.get("passwordEnv")
@@ -336,6 +377,9 @@ def load_mail_accounts() -> list[MailAccount]:
                     host="graph.microsoft.com",
                     provider=provider,
                     max_fetch=int(item.get("maxFetch") or DEFAULT_MAX_FETCH),
+                    max_unread_fetch=int(
+                        item.get("maxUnreadFetch") or DEFAULT_MAX_UNREAD_FETCH
+                    ),
                     client_id=client_id,
                     tenant=str(item.get("tenant") or "consumers"),
                     forwarded_sources=forwarded_sources,
@@ -359,8 +403,13 @@ def load_mail_accounts() -> list[MailAccount]:
                 folder=str(item.get("folder") or "INBOX"),
                 use_ssl=bool(item.get("useSsl", True)),
                 max_fetch=int(item.get("maxFetch") or DEFAULT_MAX_FETCH),
+                max_unread_fetch=int(
+                    item.get("maxUnreadFetch") or DEFAULT_MAX_UNREAD_FETCH
+                ),
                 web_search_url=str(item.get("webSearchUrl") or ""),
                 forwarded_sources=forwarded_sources,
+                marketing_action=marketing_action,
+                trash_folder=str(item.get("trashFolder") or ""),
             )
         )
 
@@ -672,6 +721,19 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
         with _connect() as connection:
             ensure_schema()
             last_uid = _get_sync_state(connection, "mail", account.id, "last_uid")
+            local_unread_rows = connection.execute(
+                """
+                SELECT source_item_id
+                FROM messages
+                WHERE id LIKE ? AND is_read = 0
+                ORDER BY received_at DESC
+                LIMIT ?
+                """,
+                (
+                    f"mail:{account.id}:{uidvalidity}:%",
+                    account.max_unread_fetch,
+                ),
+            ).fetchall()
 
         if last_uid and last_uid.isdigit():
             sync_window = max(account.max_fetch * 2, 50)
@@ -680,12 +742,25 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
             since = (datetime.now(LOCAL_TZ) - timedelta(days=DEFAULT_SYNC_LOOKBACK_DAYS)).strftime("%d-%b-%Y")
             criteria = f"SINCE {since}"
 
-        status, data = client.uid("search", None, criteria)
+        status, recent_data = client.uid("search", None, criteria)
+        if status != "OK":
+            raise RuntimeError("cannot search recent IMAP messages")
 
-        if status != "OK" or not data or not data[0]:
-            return []
+        unseen_status, unseen_data = client.uid("search", None, "UNSEEN")
+        if unseen_status != "OK":
+            raise RuntimeError("cannot search unread IMAP messages")
 
-        uids = data[0].split()[-account.max_fetch :]
+        recent_uids = recent_data[0].split()[-account.max_fetch :] if recent_data and recent_data[0] else []
+        unseen_uids = unseen_data[0].split()[-account.max_unread_fetch :] if unseen_data and unseen_data[0] else []
+        local_unread_uids = [
+            str(row["source_item_id"]).rsplit(":", 1)[-1].encode("ascii")
+            for row in local_unread_rows
+            if str(row["source_item_id"]).rsplit(":", 1)[-1].isdigit()
+        ]
+        uids = sorted(
+            set(recent_uids + unseen_uids + local_unread_uids),
+            key=lambda value: int(value),
+        )
         items: list[MessageItem] = []
 
         for uid_bytes in uids:
@@ -722,7 +797,8 @@ def collect_imap_account(account: MailAccount) -> list[MessageItem]:
 
         if uids:
             with _connect() as connection:
-                _set_sync_state(connection, "mail", account.id, "last_uid", uids[-1].decode("ascii"))
+                latest_uid = max(int(value) for value in uids)
+                _set_sync_state(connection, "mail", account.id, "last_uid", str(latest_uid))
                 connection.commit()
 
         return items
@@ -954,6 +1030,110 @@ def collect_microsoft_graph_account(account: MailAccount) -> list[MessageItem]:
     return items
 
 
+PROTECTED_MAIL_TERMS = (
+    "billing change",
+    "pricing change",
+    "price adjustment",
+    "api pricing",
+    "invoice",
+    "payment failed",
+    "security alert",
+    "service interruption",
+    "service discontinuation",
+    "terms change",
+    "计费调整",
+    "计费变更",
+    "价格调整",
+    "价格变更",
+    "费用调整",
+    "账单",
+    "扣款",
+    "退款",
+    "安全提醒",
+    "服务中断",
+    "停止服务",
+    "停服",
+    "条款变更",
+)
+
+MARKETING_MAIL_TERMS = (
+    "unsubscribe",
+    "newsletter",
+    "promotion",
+    "promotional",
+    "discount",
+    "limited-time offer",
+    "special offer",
+    "deal",
+    "coupon",
+    "促销",
+    "折扣",
+    "优惠",
+    "限时",
+    "满减",
+    "免邮",
+    "广告",
+    "镇店之宝",
+    "热卖",
+    "特价",
+    "好价",
+)
+
+
+def _mail_policy_text(item: MessageItem) -> str:
+    return f"{item.title}\n{item.sender}\n{item.snippet}\n{item.body_text}".lower()
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
+def _apply_analysis_policy(item: MessageItem, analysis: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(analysis)
+    text = _mail_policy_text(item)
+    protected_terms = [term for term in PROTECTED_MAIL_TERMS if term in text]
+    importance = str(normalized.get("importance") or "normal").lower()
+    if importance not in {"critical", "important", "normal", "low"}:
+        importance = "normal"
+
+    normalized["importance"] = importance
+    normalized["needsAttention"] = _as_bool(normalized.get("needsAttention"))
+    normalized["category"] = str(normalized.get("category") or "mail").lower()
+
+    if protected_terms:
+        normalized["importance"] = "important"
+        normalized["needsAttention"] = True
+        if any(term in text for term in ("billing", "pricing", "price", "invoice", "payment", "计费", "价格", "费用", "账单", "扣款", "退款")):
+            normalized["category"] = "billing"
+        else:
+            normalized["category"] = "service_change"
+        normalized["displayReason"] = (
+            "Local safety policy: account, billing, security, or service change."
+        )
+
+    normalized["policyVersion"] = ANALYSIS_POLICY_VERSION
+    return normalized
+
+
+def _is_high_confidence_marketing(item: MessageItem, analysis: dict[str, Any]) -> bool:
+    text = _mail_policy_text(item)
+    if any(term in text for term in PROTECTED_MAIL_TERMS):
+        return False
+
+    category = str(analysis.get("category") or "mail").lower()
+    importance = str(analysis.get("importance") or "normal").lower()
+    needs_attention = _as_bool(analysis.get("needsAttention"))
+    has_marketing_evidence = any(term in text for term in MARKETING_MAIL_TERMS)
+    return (
+        category in LOW_SIGNAL_CATEGORIES
+        and importance == "low"
+        and not needs_attention
+        and has_marketing_evidence
+    )
+
+
 def _fallback_analysis(item: MessageItem) -> dict[str, Any]:
     text = f"{item.title}\n{item.sender}\n{item.snippet}".lower()
     important_keywords = [
@@ -1027,7 +1207,7 @@ def analyze_message(item: MessageItem) -> dict[str, Any]:
     api_key = os.getenv("DEEPSEEK_API_KEY")
 
     if not api_key:
-        return _fallback_analysis(item)
+        return _apply_analysis_policy(item, _fallback_analysis(item))
 
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
     model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
@@ -1082,7 +1262,7 @@ def analyze_message(item: MessageItem) -> dict[str, Any]:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return _fallback_analysis(item)
+        return _apply_analysis_policy(item, _fallback_analysis(item))
 
     content = (
         data.get("choices", [{}])[0]
@@ -1091,7 +1271,7 @@ def analyze_message(item: MessageItem) -> dict[str, Any]:
     )
     analysis = {**_fallback_analysis(item), **_extract_json_object(str(content))}
     analysis["model"] = model
-    return analysis
+    return _apply_analysis_policy(item, analysis)
 
 
 def dismiss_mail_message(message_id: str) -> dict[str, Any]:
@@ -1134,9 +1314,9 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
         INSERT INTO message_analysis (
           message_id, importance, needs_attention, category, summary,
           action_items, deadline, display_reason, notification_title,
-          model, analyzed_at
+          model, policy_version, analyzed_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(message_id) DO UPDATE SET
           importance = excluded.importance,
           needs_attention = excluded.needs_attention,
@@ -1147,6 +1327,7 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
           display_reason = excluded.display_reason,
           notification_title = excluded.notification_title,
           model = excluded.model,
+          policy_version = excluded.policy_version,
           analyzed_at = excluded.analyzed_at
         """,
         (
@@ -1160,6 +1341,7 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
             str(analysis.get("displayReason") or ""),
             str(analysis.get("notificationTitle") or item.title),
             str(analysis.get("model") or "local-fallback"),
+            int(analysis.get("policyVersion") or ANALYSIS_POLICY_VERSION),
             now_iso(),
         ),
     )
@@ -1186,7 +1368,7 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
                 f"notification:{item.id}",
                 "mail",
                 item.id,
-                str(analysis.get("notificationTitle") or item.title),
+                item.title,
                 str(analysis.get("summary") or item.snippet),
                 item.received_at,
                 1,
@@ -1204,6 +1386,181 @@ def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: 
         )
 
 
+def _analysis_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+
+    return {
+        "importance": row["importance"],
+        "needsAttention": bool(row["needs_attention"]),
+        "category": row["category"],
+        "summary": row["summary"],
+        "actionItems": json.loads(row["action_items"] or "[]"),
+        "deadline": row["deadline"],
+        "displayReason": row["display_reason"],
+        "notificationTitle": row["notification_title"],
+        "model": row["model"],
+        "policyVersion": int(row["policy_version"] or 0),
+    }
+
+
+def _mail_action_status(
+    connection: sqlite3.Connection,
+    message_id: str,
+    action: str,
+) -> str | None:
+    row = connection.execute(
+        "SELECT status FROM mail_actions WHERE message_id = ? AND action = ?",
+        (message_id, action),
+    ).fetchone()
+    return str(row["status"]) if row else None
+
+
+def _mail_action_completed(connection: sqlite3.Connection, message_id: str, action: str) -> bool:
+    return _mail_action_status(connection, message_id, action) == "completed"
+
+
+def _record_mail_action(
+    message_id: str,
+    action: str,
+    status: str,
+    reason: str,
+    error: str | None = None,
+) -> None:
+    now = now_iso()
+    with _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO mail_actions (
+              message_id, action, status, reason, attempts, last_error,
+              attempted_at, completed_at
+            )
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(message_id, action) DO UPDATE SET
+              status = excluded.status,
+              reason = excluded.reason,
+              attempts = mail_actions.attempts + 1,
+              last_error = excluded.last_error,
+              attempted_at = excluded.attempted_at,
+              completed_at = excluded.completed_at
+            """,
+            (
+                message_id,
+                action,
+                status,
+                reason,
+                error,
+                now,
+                now if status == "completed" else None,
+            ),
+        )
+        if status == "completed":
+            connection.execute(
+                "UPDATE messages SET is_read = 1, updated_at = ? WHERE id = ?",
+                (now, message_id),
+            )
+            connection.execute(
+                "DELETE FROM notification_items WHERE source_item_id = ? OR id = ?",
+                (message_id, f"notification:{message_id}"),
+            )
+        connection.commit()
+
+
+def _mailbox_name_from_list_line(line: bytes) -> str:
+    text = line.decode("utf-8", errors="replace").strip()
+    quoted = re.search(r'"((?:[^"\\]|\\.)*)"\s*$', text)
+    if quoted:
+        return quoted.group(1).replace(r'\"', '"')
+    return text.rsplit(" ", 1)[-1]
+
+
+def _resolve_trash_folder(client: imaplib.IMAP4, account: MailAccount) -> str:
+    if account.trash_folder:
+        return account.trash_folder
+
+    status, folders = client.list()
+    if status != "OK" or not folders:
+        raise RuntimeError("cannot discover the IMAP trash folder")
+
+    discovered: list[tuple[str, str]] = []
+    for raw_line in folders:
+        if not isinstance(raw_line, bytes):
+            continue
+        line = raw_line.decode("utf-8", errors="replace")
+        folder = _mailbox_name_from_list_line(raw_line)
+        discovered.append((line, folder))
+        if "\\Trash" in line:
+            return folder
+
+    preferred_names = {
+        "deleted messages",
+        "trash",
+        "inbox.trash",
+        "deleted items",
+    }
+    for _, folder in discovered:
+        if folder.lower() in preferred_names:
+            return folder
+
+    raise RuntimeError("IMAP server did not advertise a trash folder; set trashFolder")
+
+
+def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None:
+    if account.provider != "imap":
+        raise RuntimeError("automatic trash currently supports IMAP accounts only")
+
+    source_parts = item.source_item_id.rsplit(":", 1)
+    if len(source_parts) != 2 or not source_parts[1].isdigit():
+        raise RuntimeError("message does not contain a usable IMAP UID")
+    expected_uidvalidity, uid = source_parts
+
+    context = ssl.create_default_context()
+    client: imaplib.IMAP4
+    if account.use_ssl:
+        client = imaplib.IMAP4_SSL(account.host, account.port, ssl_context=context)
+    else:
+        client = imaplib.IMAP4(account.host, account.port)
+
+    try:
+        client.login(account.username, account.password)
+        status, _ = client.select(account.folder, readonly=False)
+        if status != "OK":
+            raise RuntimeError(f"cannot select folder {account.folder} for cleanup")
+
+        uidvalidity_values = client.response("UIDVALIDITY")[1]
+        current_uidvalidity = (
+            str(uidvalidity_values[0], "ascii")
+            if uidvalidity_values and uidvalidity_values[0]
+            else "default"
+        )
+        if current_uidvalidity != expected_uidvalidity:
+            raise RuntimeError("mailbox UIDVALIDITY changed; refusing to move a stale UID")
+
+        trash_folder = _resolve_trash_folder(client, account)
+        capabilities = {
+            value.decode("ascii", errors="ignore").upper()
+            if isinstance(value, bytes)
+            else str(value).upper()
+            for value in client.capabilities
+        }
+        if "MOVE" not in capabilities:
+            raise RuntimeError("IMAP server does not support atomic MOVE")
+
+        store_status, _ = client.uid("STORE", uid, "+FLAGS.SILENT", "(\\Seen)")
+        if store_status != "OK":
+            raise RuntimeError("failed to mark marketing message as read")
+
+        quoted_trash = client._quote(trash_folder)
+        move_status, _ = client.uid("MOVE", uid, quoted_trash)
+        if move_status != "OK":
+            raise RuntimeError("failed to move marketing message to trash")
+    finally:
+        try:
+            client.logout()
+        except imaplib.IMAP4.error:
+            pass
+
+
 def refresh_mail() -> dict[str, Any]:
     ensure_schema()
     try:
@@ -1219,6 +1576,8 @@ def refresh_mail() -> dict[str, Any]:
 
     inserted = 0
     analyzed = 0
+    reclassified = 0
+    trashed = 0
     errors: list[str] = []
 
     if not accounts:
@@ -1240,6 +1599,7 @@ def refresh_mail() -> dict[str, Any]:
             errors.append(f"{account.label}: {exc}")
             continue
 
+        trash_candidates: list[tuple[MessageItem, dict[str, Any]]] = []
         with _connect() as connection:
             for item in items:
                 changed = _save_message(connection, item)
@@ -1249,14 +1609,68 @@ def refresh_mail() -> dict[str, Any]:
                         "DELETE FROM notification_items WHERE source_item_id = ? OR id = ?",
                         (item.id, f"notification:{item.id}"),
                     )
+                    if (
+                        account.marketing_action == "trash"
+                        and _mail_action_status(connection, item.id, "trash") == "failed"
+                    ):
+                        failed_analysis_row = connection.execute(
+                            """
+                            SELECT importance, needs_attention, category, summary,
+                                   action_items, deadline, display_reason,
+                                   notification_title, model, policy_version
+                            FROM message_analysis
+                            WHERE message_id = ?
+                            """,
+                            (item.id,),
+                        ).fetchone()
+                        failed_analysis = _analysis_from_row(failed_analysis_row)
+                        if failed_analysis and _is_high_confidence_marketing(item, failed_analysis):
+                            trash_candidates.append((item, failed_analysis))
                     continue
 
-                if changed:
+                analysis_row = connection.execute(
+                    """
+                    SELECT importance, needs_attention, category, summary,
+                           action_items, deadline, display_reason,
+                           notification_title, model, policy_version
+                    FROM message_analysis
+                    WHERE message_id = ?
+                    """,
+                    (item.id,),
+                ).fetchone()
+                existing_analysis = _analysis_from_row(analysis_row)
+
+                if changed or existing_analysis is None:
                     inserted += 1
-                    _save_analysis(connection, item, analyze_message(item))
+                    analysis = analyze_message(item)
+                    _save_analysis(connection, item, analysis)
                     analyzed += 1
+                elif int(existing_analysis.get("policyVersion") or 0) < ANALYSIS_POLICY_VERSION:
+                    analysis = _apply_analysis_policy(item, existing_analysis)
+                    _save_analysis(connection, item, analysis)
+                    reclassified += 1
+                else:
+                    analysis = existing_analysis
+
+                if (
+                    account.marketing_action == "trash"
+                    and _is_high_confidence_marketing(item, analysis)
+                    and not _mail_action_completed(connection, item.id, "trash")
+                ):
+                    trash_candidates.append((item, analysis))
 
             connection.commit()
+
+        for item, analysis in trash_candidates:
+            reason = str(analysis.get("displayReason") or "High-confidence marketing mail")
+            try:
+                _move_imap_message_to_trash(account, item)
+                _record_mail_action(item.id, "trash", "completed", reason)
+                trashed += 1
+            except (imaplib.IMAP4.error, OSError, RuntimeError) as exc:
+                message = f"{account.label}: marketing cleanup failed: {exc}"
+                errors.append(message)
+                _record_mail_action(item.id, "trash", "failed", reason, str(exc))
 
     return {
         "configured": True,
@@ -1270,12 +1684,78 @@ def refresh_mail() -> dict[str, Any]:
         ],
         "fetched": inserted,
         "analyzed": analyzed,
+        "reclassified": reclassified,
+        "trashed": trashed,
         "errors": errors,
     }
 
 
-def mail_summary(limit: int = 12) -> dict[str, Any]:
+MAIL_UNREAD_FILTER_SQL = """
+    NOT (
+      LOWER(m.account_email) LIKE '%@qq.com'
+      AND m.title LIKE '[Homework Monitor]%'
+    )
+    AND COALESCE(m.is_read, 0) = 0
+    AND d.message_id IS NULL
+"""
+
+MAIL_SELECT_SQL = """
+    SELECT
+      m.id, m.account_label, m.account_email, m.title, m.sender,
+      m.received_at, m.snippet, m.web_link,
+      a.importance, a.needs_attention, a.category, a.summary,
+      a.action_items, a.deadline, a.display_reason, a.notification_title,
+      a.analyzed_at
+    FROM messages m
+    LEFT JOIN message_analysis a ON a.message_id = m.id
+    LEFT JOIN dismissed_messages d ON d.message_id = m.id
+"""
+
+
+def _mail_filter_reason(row: sqlite3.Row) -> str | None:
+    if row["needs_attention"] or str(row["importance"] or "") in {"critical", "important"}:
+        return None
+
+    category = str(row["category"] or "mail").lower()
+    if category in LOW_SIGNAL_CATEGORIES:
+        return category
+    if str(row["importance"] or "normal").lower() == "low":
+        return "low_priority"
+
+    text = f"{row['title']}\n{row['sender']}\n{row['snippet']}".lower()
+    if any(term in text for term in MARKETING_MAIL_TERMS):
+        return "marketing_pattern"
+    return None
+
+
+def _mail_item_from_row(row: sqlite3.Row, priority: bool) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "accountLabel": row["account_label"],
+        "accountEmail": row["account_email"],
+        "title": row["title"],
+        "sender": row["sender"],
+        "receivedAt": row["received_at"],
+        "snippet": row["snippet"],
+        "summary": row["summary"] or row["snippet"],
+        "importance": row["importance"] or "normal",
+        "needsAttention": bool(row["needs_attention"]),
+        "category": row["category"] or "mail",
+        "actionItems": json.loads(row["action_items"] or "[]"),
+        "deadline": row["deadline"],
+        "displayReason": row["display_reason"] or "",
+        "webLink": row["web_link"],
+        "analyzedAt": row["analyzed_at"],
+        "isPriority": priority,
+        "filterReason": None if priority else _mail_filter_reason(row),
+    }
+
+
+def mail_messages(view: str = "priority", limit: int = 100) -> dict[str, Any]:
     ensure_schema()
+    if view not in {"priority", "unread"}:
+        raise ValueError("mail view must be priority or unread")
+    limit = max(1, min(limit, 200))
     config_error: str | None = None
 
     try:
@@ -1284,45 +1764,21 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
         accounts = []
         config_error = f"mail config failed: {exc}"
 
+    selected_filter = MAIL_VISIBLE_FILTER_SQL if view == "priority" else MAIL_UNREAD_FILTER_SQL
     with _connect() as connection:
         rows = connection.execute(
-            f"""
-            SELECT
-              m.id, m.account_label, m.account_email, m.title, m.sender,
-              m.received_at, m.snippet, m.web_link,
-              a.importance, a.needs_attention, a.category, a.summary,
-              a.action_items, a.deadline, a.display_reason, a.notification_title,
-              a.analyzed_at
-            FROM messages m
-            LEFT JOIN message_analysis a ON a.message_id = m.id
-            LEFT JOIN dismissed_messages d ON d.message_id = m.id
-            WHERE {MAIL_VISIBLE_FILTER_SQL}
-            ORDER BY m.received_at DESC
-            LIMIT ?
-            """,
+            f"{MAIL_SELECT_SQL} WHERE {selected_filter} ORDER BY m.received_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
-        visible_count = int(
+        priority_ids = {
+            str(row["id"])
+            for row in connection.execute(
+                f"SELECT m.id FROM messages m LEFT JOIN message_analysis a ON a.message_id = m.id LEFT JOIN dismissed_messages d ON d.message_id = m.id WHERE {MAIL_VISIBLE_FILTER_SQL}"
+            ).fetchall()
+        }
+        unread_count = int(
             connection.execute(
-                f"""
-                SELECT COUNT(*) AS count
-                FROM messages m
-                LEFT JOIN message_analysis a ON a.message_id = m.id
-                LEFT JOIN dismissed_messages d ON d.message_id = m.id
-                WHERE {MAIL_VISIBLE_FILTER_SQL}
-                """
-            ).fetchone()["count"]
-        )
-        total_count = int(
-            connection.execute(
-                """
-                SELECT COUNT(*) AS count
-                FROM messages m
-                WHERE NOT (
-                  LOWER(m.account_email) LIKE '%@qq.com'
-                  AND m.title LIKE '[Homework Monitor]%'
-                )
-                """
+                f"SELECT COUNT(*) AS count FROM messages m LEFT JOIN dismissed_messages d ON d.message_id = m.id WHERE {MAIL_UNREAD_FILTER_SQL}"
             ).fetchone()["count"]
         )
         sync_rows = connection.execute(
@@ -1337,16 +1793,25 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
     last_sync_by_account = {
         str(row["account_id"]): str(row["updated_at"]) for row in sync_rows
     }
+    priority_count = len(priority_ids)
+    items = [_mail_item_from_row(row, str(row["id"]) in priority_ids) for row in rows]
     important_count = sum(
         1
-        for row in rows
-        if row["needs_attention"] or str(row["importance"] or "") in {"critical", "important"}
+        for item in items
+        if item["isPriority"]
+        and (item["needsAttention"] or item["importance"] in {"critical", "important"})
     )
 
     return {
         "configured": bool(accounts),
         "error": config_error,
-        "hiddenCount": max(0, total_count - visible_count),
+        "view": view,
+        "counts": {
+            "priority": priority_count,
+            "unread": unread_count,
+            "filtered": max(0, unread_count - priority_count),
+        },
+        "hiddenCount": max(0, unread_count - priority_count),
         "accounts": [
             {
                 "id": account.id,
@@ -1357,28 +1822,12 @@ def mail_summary(limit: int = 12) -> dict[str, Any]:
             for account in accounts
         ],
         "importantCount": important_count,
-        "items": [
-            {
-                "id": row["id"],
-                "accountLabel": row["account_label"],
-                "accountEmail": row["account_email"],
-                "title": row["notification_title"] or row["title"],
-                "sender": row["sender"],
-                "receivedAt": row["received_at"],
-                "snippet": row["snippet"],
-                "summary": row["summary"] or row["snippet"],
-                "importance": row["importance"] or "normal",
-                "needsAttention": bool(row["needs_attention"]),
-                "category": row["category"] or "mail",
-                "actionItems": json.loads(row["action_items"] or "[]"),
-                "deadline": row["deadline"],
-                "displayReason": row["display_reason"] or "",
-                "webLink": row["web_link"],
-                "analyzedAt": row["analyzed_at"],
-            }
-            for row in rows
-        ],
+        "items": items,
     }
+
+
+def mail_summary(limit: int = 12) -> dict[str, Any]:
+    return mail_messages(view="priority", limit=limit)
 
 
 def notification_center() -> dict[str, Any]:

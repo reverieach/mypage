@@ -73,8 +73,11 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 - Outlook IMAP 基础认证不可依赖；Microsoft Graph/OAuth 代码存在，但当前不是默认路径。
 - `DeepSeek` 用于新邮件重要性判断；没有 `DEEPSEEK_API_KEY` 时走本地关键词兜底。
 - Mail 首页默认过滤低信号邮件、已读邮件、手动隐藏邮件。
+- Mail 详情页可查看重点邮件和全部未读邮件；`filtered` 只表示被分类规则过滤的未读邮件，不包含历史已读或手动隐藏邮件。
 - 通知中心只显示需要关注或重要的邮件通知。
 - 邮件卡片和通知中的 mail 项可以 dismiss；dismiss 写入本地 SQLite。
+- 手动 dismiss 只在 MyPage 内永久隐藏，不提供恢复，也不能改动远端邮箱。
+- 可选营销清理必须由账户的 `marketingAction: "trash"` 显式启用，只允许在 AI 与本地确定性规则一致且未命中计费、安全、账号或服务变更保护规则时，通过 IMAP UID 移入垃圾箱；禁止 `EXPUNGE`。
 
 ## Homework 规则
 

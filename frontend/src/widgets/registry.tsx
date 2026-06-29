@@ -31,7 +31,15 @@ const widgetRegistry = {
   'important.info': ImportantInfoWidget,
 }
 
-export function WidgetRenderer({ config }: { config: WidgetConfig }) {
+export type WidgetRenderMode = 'compact' | 'detail'
+
+export function WidgetRenderer({
+  config,
+  mode = 'compact',
+}: {
+  config: WidgetConfig
+  mode?: WidgetRenderMode
+}) {
   switch (config.type) {
     case 'links.grid': {
       const Component = widgetRegistry['links.grid']
@@ -83,7 +91,7 @@ export function WidgetRenderer({ config }: { config: WidgetConfig }) {
     }
     case 'mail.digest': {
       const Component = widgetRegistry['mail.digest']
-      return <Component config={config} />
+      return <Component config={config} mode={mode} />
     }
     case 'important.info': {
       const Component = widgetRegistry['important.info']

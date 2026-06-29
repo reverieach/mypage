@@ -19,6 +19,9 @@
     "folder": "INBOX",
     "useSsl": true,
     "maxFetch": 20,
+    "maxUnreadFetch": 100,
+    "marketingAction": "keep",
+    "trashFolder": "[Gmail]/Trash",
     "webSearchUrl": "https://mail.google.com/mail/u/0/#search/rfc822msgid:{messageId}"
   },
   {

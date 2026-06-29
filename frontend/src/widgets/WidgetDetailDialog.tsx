@@ -58,7 +58,7 @@ export function WidgetDetailDialog({
               </DialogPrimitive.Close>
             </div>
             <div className="min-h-0 flex-1">
-              {config ? <WidgetRenderer config={config} /> : null}
+              {config ? <WidgetRenderer config={config} mode="detail" /> : null}
             </div>
                 </motion.div>
               </DialogPrimitive.Content>

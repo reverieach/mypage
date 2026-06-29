@@ -50,7 +50,10 @@ if (FRONTEND_DIST / "wallpapers").exists():
 @app.get("/", response_model=None)
 def frontend_index():
     if FRONTEND_INDEX.exists():
-        return FileResponse(FRONTEND_INDEX)
+        return FileResponse(
+            FRONTEND_INDEX,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     return HTMLResponse(
         """
