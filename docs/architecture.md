@@ -329,7 +329,7 @@ This keeps user config stable when an icon changes from `.ico` to `.png` or when
 
 ### Mail
 
-QQ IMAP is the working default. Outlook can be represented by forwarding Outlook mail into QQ and configuring forwarded source detection. Microsoft Graph device-code support exists, but is not required for the current setup.
+QQ is collected directly through IMAP. Outlook is collected directly through Microsoft Graph with device-code OAuth; forwarded-source inference is not part of the architecture.
 
 Mail analysis:
 
@@ -337,10 +337,10 @@ Mail analysis:
 - A local keyword fallback keeps the UI usable without DeepSeek.
 - A versioned local safety policy runs after AI analysis. Billing, security, account, and service-change mail cannot remain low priority because of a single model decision.
 - The compact widget shows priority unread mail. The expanded widget can switch between priority and all non-dismissed unread mail.
-- IMAP collection reconciles recent, server-unread, and locally known unread UIDs so the expanded view is not limited to the newest fetch batch.
+- IMAP collection reconciles recent, server-unread, and locally known unread UIDs. Graph collection merges recent Inbox messages with server unread messages and reconciles handled local items.
 - Low-signal mail and manually dismissed mail are hidden from the compact Mail widget. A manual dismiss is local and permanent in MyPage; it does not mutate the mailbox.
 - Important mail is copied into the shared notification center.
-- IMAP accounts can opt into conservative marketing cleanup with `marketingAction: "trash"`. Only messages where the AI result and deterministic marketing rules agree are marked read and moved to the configured IMAP trash folder. MyPage never expunges them permanently.
+- Accounts can opt into conservative marketing cleanup with `marketingAction: "trash"`. IMAP uses atomic UID `MOVE`; Graph updates `isRead` and moves to `deleteditems`. Only messages where AI and deterministic rules agree are processed, and MyPage never permanently deletes or sends mail.
 
 ### Homework
 

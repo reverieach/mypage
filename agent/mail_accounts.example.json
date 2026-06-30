@@ -6,7 +6,9 @@
     "email": "you@outlook.com",
     "tenant": "consumers",
     "clientIdEnv": "MICROSOFT_GRAPH_CLIENT_ID",
-    "maxFetch": 20
+    "maxFetch": 30,
+    "maxUnreadFetch": 100,
+    "marketingAction": "trash"
   },
   {
     "id": "gmail-main",

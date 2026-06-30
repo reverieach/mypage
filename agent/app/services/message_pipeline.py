@@ -34,6 +34,7 @@ HOMEWORK_MONITOR_PREFIX = "[Homework Monitor]"
 LOW_SIGNAL_CATEGORIES = {"shopping", "promotion", "newsletter", "spam", "marketing"}
 ANALYSIS_POLICY_VERSION = 1
 MARKETING_ACTIONS = {"keep", "trash"}
+MICROSOFT_GRAPH_SCOPES = "offline_access User.Read Mail.ReadWrite"
 MAIL_VISIBLE_FILTER_SQL = """
     NOT (
       LOWER(m.account_email) LIKE '%@qq.com'
@@ -85,27 +86,6 @@ MAIL_VISIBLE_FILTER_SQL = """
       )
     )
 """
-FORWARDED_SOURCE_HEADERS = (
-    "to",
-    "cc",
-    "bcc",
-    "delivered-to",
-    "envelope-to",
-    "x-original-to",
-    "x-forwarded-to",
-    "resent-to",
-    "apparently-to",
-)
-
-
-@dataclass(frozen=True)
-class ForwardedSource:
-    id: str
-    label: str
-    email_address: str
-    match_terms: tuple[str, ...]
-
-
 @dataclass(frozen=True)
 class MailAccount:
     id: str
@@ -123,7 +103,6 @@ class MailAccount:
     web_search_url: str = ""
     client_id: str = ""
     tenant: str = "consumers"
-    forwarded_sources: tuple[ForwardedSource, ...] = ()
     marketing_action: str = "keep"
     trash_folder: str = ""
 
@@ -311,15 +290,29 @@ def _post_form(url: str, data: dict[str, str], timeout: float = 20) -> dict[str,
         return parsed if isinstance(parsed, dict) else {}
 
 
-def _json_get(url: str, token: str, timeout: float = 20) -> dict[str, Any]:
+def _graph_json_request(
+    url: str,
+    token: str,
+    method: str = "GET",
+    body: dict[str, Any] | None = None,
+    timeout: float = 20,
+) -> dict[str, Any]:
+    encoded_body = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = {"Authorization": f"Bearer {token}"}
+    if encoded_body is not None:
+        headers["Content-Type"] = "application/json"
     request = urllib.request.Request(
         url,
-        headers={"Authorization": f"Bearer {token}"},
-        method="GET",
+        data=encoded_body,
+        headers=headers,
+        method=method,
     )
 
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        parsed = json.loads(response.read().decode("utf-8"))
+        payload = response.read()
+        if not payload:
+            return {}
+        parsed = json.loads(payload.decode("utf-8"))
         return parsed if isinstance(parsed, dict) else {}
 
 
@@ -346,7 +339,6 @@ def load_mail_accounts() -> list[MailAccount]:
             continue
 
         provider = str(item.get("provider") or "imap")
-        forwarded_sources = _parse_forwarded_sources(item)
         marketing_action = str(item.get("marketingAction") or "keep").lower()
         if marketing_action not in MARKETING_ACTIONS:
             marketing_action = "keep"
@@ -382,7 +374,7 @@ def load_mail_accounts() -> list[MailAccount]:
                     ),
                     client_id=client_id,
                     tenant=str(item.get("tenant") or "consumers"),
-                    forwarded_sources=forwarded_sources,
+                    marketing_action=marketing_action,
                 )
             )
             continue
@@ -407,51 +399,12 @@ def load_mail_accounts() -> list[MailAccount]:
                     item.get("maxUnreadFetch") or DEFAULT_MAX_UNREAD_FETCH
                 ),
                 web_search_url=str(item.get("webSearchUrl") or ""),
-                forwarded_sources=forwarded_sources,
                 marketing_action=marketing_action,
                 trash_folder=str(item.get("trashFolder") or ""),
             )
         )
 
     return accounts
-
-
-def _parse_forwarded_sources(item: dict[str, Any]) -> tuple[ForwardedSource, ...]:
-    raw_sources = item.get("forwardedSources") or []
-
-    if not isinstance(raw_sources, list):
-        return ()
-
-    sources: list[ForwardedSource] = []
-
-    for raw_source in raw_sources:
-        if not isinstance(raw_source, dict):
-            continue
-
-        email_address = str(raw_source.get("email") or "").strip()
-        if not email_address:
-            continue
-
-        match_values = raw_source.get("match")
-        if isinstance(match_values, list):
-            match_terms = tuple(
-                str(value).strip().lower()
-                for value in match_values
-                if str(value).strip()
-            )
-        else:
-            match_terms = (email_address.lower(),)
-
-        sources.append(
-            ForwardedSource(
-                id=str(raw_source.get("id") or email_address),
-                label=str(raw_source.get("label") or email_address),
-                email_address=email_address,
-                match_terms=match_terms or (email_address.lower(),),
-            )
-        )
-
-    return tuple(sources)
 
 
 def _get_sync_state(connection: sqlite3.Connection, source: str, account_id: str, key: str) -> str | None:
@@ -523,32 +476,6 @@ def _message_sender(message: EmailMessage) -> str:
     return str(sender or "")
 
 
-def _header_text(message: EmailMessage, names: tuple[str, ...]) -> str:
-    values: list[str] = []
-
-    for name in names:
-        for value in message.get_all(name, []):
-            values.append(str(value))
-
-    return "\n".join(values).lower()
-
-
-def _forwarded_source_for_message(
-    account: MailAccount,
-    message: EmailMessage,
-) -> ForwardedSource | None:
-    if not account.forwarded_sources:
-        return None
-
-    header_text = _header_text(message, FORWARDED_SOURCE_HEADERS)
-
-    for source in account.forwarded_sources:
-        if any(term and term in header_text for term in source.match_terms):
-            return source
-
-    return None
-
-
 def _message_received_at(message: EmailMessage) -> str:
     raw_date = message["date"]
 
@@ -609,18 +536,13 @@ def _parse_mail_message(
     message_id = f"mail:{account.id}:{source_item_id}"
     body_text = _message_text(message)[:MAX_BODY_CHARS]
     title = str(message["subject"] or "(no subject)")
-    forwarded_source = _forwarded_source_for_message(account, message)
-    display_account_id = forwarded_source.id if forwarded_source else account.id
-    display_account_label = forwarded_source.label if forwarded_source else account.label
-    display_account_email = forwarded_source.email_address if forwarded_source else account.email_address
-
     return MessageItem(
         id=message_id,
         source="mail",
         source_item_id=source_item_id,
-        account_id=display_account_id,
-        account_label=display_account_label,
-        account_email=display_account_email,
+        account_id=account.id,
+        account_label=account.label,
+        account_email=account.email_address,
         title=title,
         sender=_message_sender(message),
         received_at=_message_received_at(message),
@@ -818,10 +740,7 @@ def _device_code_url(account: MailAccount) -> str:
 
 
 def _graph_scopes() -> str:
-    return os.getenv(
-        "MICROSOFT_GRAPH_SCOPES",
-        "offline_access User.Read Mail.Read",
-    )
+    return MICROSOFT_GRAPH_SCOPES
 
 
 def _load_oauth_tokens() -> dict[str, Any]:
@@ -841,6 +760,24 @@ def _save_oauth_token(account_id: str, token: dict[str, Any]) -> None:
 def _get_oauth_token(account_id: str) -> dict[str, Any] | None:
     token = _load_oauth_tokens().get(account_id)
     return token if isinstance(token, dict) else None
+
+
+def _valid_cached_access_token(token: dict[str, Any]) -> str | None:
+    access_token = str(token.get("access_token") or "")
+    saved_at = str(token.get("savedAt") or "")
+    if not access_token or not saved_at:
+        return None
+
+    try:
+        saved = datetime.fromisoformat(saved_at)
+        expires_in = int(token.get("expires_in") or 0)
+    except (TypeError, ValueError):
+        return None
+
+    if saved.tzinfo is None:
+        saved = saved.replace(tzinfo=LOCAL_TZ)
+    expires_at = saved + timedelta(seconds=max(0, expires_in - 120))
+    return access_token if datetime.now(LOCAL_TZ) < expires_at else None
 
 
 def microsoft_graph_accounts() -> list[MailAccount]:
@@ -925,10 +862,14 @@ def refresh_microsoft_token(account: MailAccount) -> str | None:
     if not token:
         return None
 
+    cached_access_token = _valid_cached_access_token(token)
+    if cached_access_token:
+        return cached_access_token
+
     refresh_token = token.get("refresh_token")
 
     if not refresh_token:
-        return str(token.get("access_token") or "") or None
+        return None
 
     try:
         refreshed = _post_form(
@@ -941,7 +882,7 @@ def refresh_microsoft_token(account: MailAccount) -> str | None:
             },
         )
     except urllib.error.HTTPError:
-        return str(token.get("access_token") or "") or None
+        return None
 
     _save_oauth_token(account.id, refreshed)
     return str(refreshed.get("access_token") or token.get("access_token") or "") or None
@@ -970,64 +911,138 @@ def microsoft_auth_status() -> dict[str, Any]:
     }
 
 
+GRAPH_MESSAGE_FIELDS = (
+    "id,subject,from,receivedDateTime,bodyPreview,webLink,isRead,internetMessageId"
+)
+
+
+def _graph_message_pages(
+    url: str,
+    token: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    messages: list[dict[str, Any]] = []
+    next_url: str | None = url
+
+    while next_url and len(messages) < limit:
+        response = _graph_json_request(next_url, token)
+        values = response.get("value", [])
+        if isinstance(values, list):
+            messages.extend(value for value in values if isinstance(value, dict))
+        next_link = response.get("@odata.nextLink")
+        next_url = str(next_link) if next_link else None
+
+    return messages[:limit], next_url is None
+
+
+def _graph_message_item(account: MailAccount, message: dict[str, Any]) -> MessageItem | None:
+    graph_id = str(message.get("id") or "")
+    if not graph_id:
+        return None
+
+    sender_data = message.get("from", {}).get("emailAddress", {})
+    sender_address = str(sender_data.get("address") or "")
+    sender_name = str(sender_data.get("name") or "")
+    sender = (
+        f"{sender_name} <{sender_address}>"
+        if sender_name and sender_address
+        else sender_address or sender_name
+    )
+    body_preview = str(message.get("bodyPreview") or "")
+    internet_message_id = str(message.get("internetMessageId") or "").strip("<>")
+    return MessageItem(
+        id=f"mail:{account.id}:{graph_id}",
+        source="mail",
+        source_item_id=graph_id,
+        account_id=account.id,
+        account_label=account.label,
+        account_email=account.email_address,
+        title=str(message.get("subject") or "(no subject)"),
+        sender=sender,
+        received_at=_parse_graph_time(str(message.get("receivedDateTime") or "")),
+        snippet=body_preview[:320],
+        body_text=body_preview[:MAX_BODY_CHARS],
+        web_link=str(message.get("webLink") or ""),
+        raw_ref=internet_message_id or graph_id,
+        is_read=bool(message.get("isRead")),
+    )
+
+
+def _reconcile_graph_unread(
+    account: MailAccount,
+    server_unread_ids: set[str],
+    complete: bool,
+) -> None:
+    if not complete:
+        return
+
+    now = now_iso()
+    with _connect() as connection:
+        local_unread = connection.execute(
+            "SELECT id, source_item_id FROM messages WHERE account_id = ? AND is_read = 0",
+            (account.id,),
+        ).fetchall()
+        handled_ids = [
+            str(row["id"])
+            for row in local_unread
+            if str(row["source_item_id"]) not in server_unread_ids
+        ]
+        for message_id in handled_ids:
+            connection.execute(
+                "UPDATE messages SET is_read = 1, updated_at = ? WHERE id = ?",
+                (now, message_id),
+            )
+            connection.execute(
+                "DELETE FROM notification_items WHERE source_item_id = ? OR id = ?",
+                (message_id, f"notification:{message_id}"),
+            )
+        connection.commit()
+
+
 def collect_microsoft_graph_account(account: MailAccount) -> list[MessageItem]:
     token = refresh_microsoft_token(account)
 
     if not token:
         raise RuntimeError("Microsoft Graph account is not authorized. Start device auth first.")
 
-    query = urllib.parse.urlencode(
+    recent_query = urllib.parse.urlencode(
         {
             "$top": str(account.max_fetch),
-            "$select": "id,subject,from,receivedDateTime,bodyPreview,webLink,isRead",
+            "$select": GRAPH_MESSAGE_FIELDS,
             "$orderby": "receivedDateTime desc",
         }
     )
-    response = _json_get(
-        f"https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?{query}",
-        token,
+    unread_query = urllib.parse.urlencode(
+        {
+            "$top": str(min(account.max_unread_fetch, 100)),
+            "$select": GRAPH_MESSAGE_FIELDS,
+            "$filter": "isRead eq false",
+        }
     )
-    messages = response.get("value", [])
-    items: list[MessageItem] = []
-
-    if not isinstance(messages, list):
-        return items
-
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-
-        graph_id = str(message.get("id") or "")
-
-        if not graph_id:
-            continue
-
-        sender = (
-            message.get("from", {})
-            .get("emailAddress", {})
-            .get("address", "")
-        )
-        body_preview = str(message.get("bodyPreview") or "")
-        item = MessageItem(
-            id=f"mail:{account.id}:{graph_id}",
-            source="mail",
-            source_item_id=graph_id,
-            account_id=account.id,
-            account_label=account.label,
-            account_email=account.email_address,
-            title=str(message.get("subject") or "(no subject)"),
-            sender=str(sender),
-            received_at=_parse_graph_time(str(message.get("receivedDateTime") or "")),
-            snippet=body_preview[:320],
-            body_text=body_preview[:MAX_BODY_CHARS],
-            web_link=str(message.get("webLink") or ""),
-            raw_ref=graph_id,
-            is_read=bool(message.get("isRead")),
-        )
-
-        items.append(item)
-
-    return items
+    recent_messages, _ = _graph_message_pages(
+        f"https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?{recent_query}",
+        token,
+        account.max_fetch,
+    )
+    unread_messages, unread_complete = _graph_message_pages(
+        f"https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?{unread_query}",
+        token,
+        account.max_unread_fetch,
+    )
+    combined = {
+        str(message.get("id")): message
+        for message in recent_messages + unread_messages
+        if message.get("id")
+    }
+    server_unread_ids = {
+        str(message.get("id")) for message in unread_messages if message.get("id")
+    }
+    _reconcile_graph_unread(account, server_unread_ids, unread_complete)
+    return [
+        item
+        for message in combined.values()
+        if (item := _graph_message_item(account, message)) is not None
+    ]
 
 
 PROTECTED_MAIL_TERMS = (
@@ -1404,6 +1419,23 @@ def _analysis_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
     }
 
 
+def _load_analysis(
+    connection: sqlite3.Connection,
+    message_id: str,
+) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT importance, needs_attention, category, summary,
+               action_items, deadline, display_reason,
+               notification_title, model, policy_version
+        FROM message_analysis
+        WHERE message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    return _analysis_from_row(row)
+
+
 def _mail_action_status(
     connection: sqlite3.Connection,
     message_id: str,
@@ -1561,6 +1593,34 @@ def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None
             pass
 
 
+def _move_graph_message_to_trash(account: MailAccount, item: MessageItem) -> None:
+    token = refresh_microsoft_token(account)
+    if not token:
+        raise RuntimeError("Microsoft Graph account is not authorized")
+
+    message_id = urllib.parse.quote(item.source_item_id, safe="")
+    message_url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}"
+    _graph_json_request(
+        message_url,
+        token,
+        method="PATCH",
+        body={"isRead": True},
+    )
+    _graph_json_request(
+        f"{message_url}/move",
+        token,
+        method="POST",
+        body={"destinationId": "deleteditems"},
+    )
+
+
+def _move_message_to_trash(account: MailAccount, item: MessageItem) -> None:
+    if account.provider == "microsoft_graph":
+        _move_graph_message_to_trash(account, item)
+        return
+    _move_imap_message_to_trash(account, item)
+
+
 def refresh_mail() -> dict[str, Any]:
     ensure_schema()
     try:
@@ -1613,32 +1673,12 @@ def refresh_mail() -> dict[str, Any]:
                         account.marketing_action == "trash"
                         and _mail_action_status(connection, item.id, "trash") == "failed"
                     ):
-                        failed_analysis_row = connection.execute(
-                            """
-                            SELECT importance, needs_attention, category, summary,
-                                   action_items, deadline, display_reason,
-                                   notification_title, model, policy_version
-                            FROM message_analysis
-                            WHERE message_id = ?
-                            """,
-                            (item.id,),
-                        ).fetchone()
-                        failed_analysis = _analysis_from_row(failed_analysis_row)
+                        failed_analysis = _load_analysis(connection, item.id)
                         if failed_analysis and _is_high_confidence_marketing(item, failed_analysis):
                             trash_candidates.append((item, failed_analysis))
                     continue
 
-                analysis_row = connection.execute(
-                    """
-                    SELECT importance, needs_attention, category, summary,
-                           action_items, deadline, display_reason,
-                           notification_title, model, policy_version
-                    FROM message_analysis
-                    WHERE message_id = ?
-                    """,
-                    (item.id,),
-                ).fetchone()
-                existing_analysis = _analysis_from_row(analysis_row)
+                existing_analysis = _load_analysis(connection, item.id)
 
                 if changed or existing_analysis is None:
                     inserted += 1
@@ -1664,7 +1704,7 @@ def refresh_mail() -> dict[str, Any]:
         for item, analysis in trash_candidates:
             reason = str(analysis.get("displayReason") or "High-confidence marketing mail")
             try:
-                _move_imap_message_to_trash(account, item)
+                _move_message_to_trash(account, item)
                 _record_mail_action(item.id, "trash", "completed", reason)
                 trashed += 1
             except (imaplib.IMAP4.error, OSError, RuntimeError) as exc:

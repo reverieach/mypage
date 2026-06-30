@@ -67,7 +67,6 @@ if (-not (Test-Path $PythonExe)) {
 
 $env:QQ_MAIL_AUTH_CODE = [Environment]::GetEnvironmentVariable("QQ_MAIL_AUTH_CODE", "User")
 $env:DEEPSEEK_API_KEY = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")
-$env:OUTLOOK_MAIL_APP_PASSWORD = [Environment]::GetEnvironmentVariable("OUTLOOK_MAIL_APP_PASSWORD", "User")
 
 Start-Process `
   -FilePath $PythonExe `

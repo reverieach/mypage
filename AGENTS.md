@@ -69,8 +69,8 @@ MyPage 是一个个人浏览器起始页 / 新标签页工具。它不是公开 
 ## 邮件和通知规则
 
 - QQ IMAP 是当前可用采集入口。
-- Outlook 当前通过转发到 QQ 的方式识别来源，QQ 收到的转发邮件可显示为 Outlook。
-- Outlook IMAP 基础认证不可依赖；Microsoft Graph/OAuth 代码存在，但当前不是默认路径。
+- Outlook 通过 Microsoft Graph/OAuth 直接采集，QQ 只采集自己的 IMAP 邮件；不要恢复“Outlook 转发到 QQ 后再猜测来源”的临时兼容层。
+- Outlook 使用委托权限 `User.Read` 和 `Mail.ReadWrite`，不申请 `Mail.Send`。Graph 动作只允许标记已读和移动到 `deleteditems`，禁止永久删除。
 - `DeepSeek` 用于新邮件重要性判断；没有 `DEEPSEEK_API_KEY` 时走本地关键词兜底。
 - Mail 首页默认过滤低信号邮件、已读邮件、手动隐藏邮件。
 - Mail 详情页可查看重点邮件和全部未读邮件；`filtered` 只表示被分类规则过滤的未读邮件，不包含历史已读或手动隐藏邮件。
