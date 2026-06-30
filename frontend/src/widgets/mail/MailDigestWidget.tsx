@@ -76,8 +76,8 @@ export function MailDigestWidget({
     })
   }
 
-  async function dismissMail(id: string) {
-    await postAgentEnvelope(`/api/mail/messages/${encodeURIComponent(id)}/dismiss`)
+  async function markMailRead(id: string) {
+    await postAgentEnvelope(`/api/mail/messages/${encodeURIComponent(id)}/read`)
     await summaryQuery.refetch()
     if (mode === 'detail') await detailQuery.refetch()
   }
@@ -165,12 +165,13 @@ export function MailDigestWidget({
                       ) : null}
                       <button
                         type="button"
-                        aria-label="Hide mail"
+                        aria-label="Mark mail as read"
+                        title="Mark as read"
                         className="-mr-1 rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78"
                         onClick={(event) => {
                           event.preventDefault()
                           event.stopPropagation()
-                          void dismissMail(item.id)
+                          void markMailRead(item.id)
                         }}
                       >
                         <X className="h-3.5 w-3.5" aria-hidden="true" />

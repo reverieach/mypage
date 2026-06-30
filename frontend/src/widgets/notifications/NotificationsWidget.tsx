@@ -19,9 +19,9 @@ const sourceIcons = {
 export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<NotificationCenterData>(config)
 
-  async function dismissMail(messageId: string) {
+  async function markMailRead(messageId: string) {
     await postAgentEnvelope(
-      `/api/mail/messages/${encodeURIComponent(messageId)}/dismiss`,
+      `/api/mail/messages/${encodeURIComponent(messageId)}/read`,
     )
     await query.refetch()
   }
@@ -74,12 +74,13 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
               {item.source === 'mail' ? (
                 <button
                   type="button"
-                  aria-label="Hide mail notification"
+                  aria-label="Mark mail notification as read"
+                  title="Mark as read"
                   className="-mr-1 self-start rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78"
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()
-                    void dismissMail(item.sourceItemId ?? item.id)
+                    void markMailRead(item.sourceItemId ?? item.id)
                   }}
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />

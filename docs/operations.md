@@ -194,7 +194,7 @@ Invoke-RestMethod http://127.0.0.1:3217/api/mail/summary
 Invoke-RestMethod http://127.0.0.1:3217/api/notifications
 ```
 
-The Mail widget hides read, dismissed, low-signal, and obvious promotion mail.
+The Mail widget hides read, legacy-dismissed, low-signal, and obvious promotion mail. Clicking an item's `x` marks it read in the real mailbox before removing it from MyPage.
 
 ## Weather Setup
 
@@ -460,7 +460,7 @@ Mail looks noisy:
 - check `DEEPSEEK_API_KEY`
 - run `/api/mail/refresh`
 - inspect `hiddenCount` in `/api/mail/summary`
-- dismiss individual items from the frontend
+- mark individual items as read with the frontend `x` control
 
 Homework refresh stale:
 

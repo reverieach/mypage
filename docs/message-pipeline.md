@@ -24,8 +24,8 @@ Important tables:
 - `message_analysis`: DeepSeek or fallback analysis.
 - `notification_items`: items surfaced in the shared notification center.
 - `sync_state`: per-account incremental sync state.
-- `dismissed_messages`: local manual hides from the frontend.
-- `mail_actions`: idempotent audit records for optional remote mailbox actions.
+- `dismissed_messages`: legacy local manual hides retained for backward compatibility.
+- `mail_actions`: idempotent audit records for remote mailbox actions, including `mark_read` and optional marketing cleanup.
 
 ## Mail Account Configuration
 
@@ -104,7 +104,7 @@ The compact Mail widget hides:
 
 - QQ homework delivery emails whose subject starts with `[Homework Monitor]`
 - read mail detected through IMAP `\Seen` or Graph `isRead`
-- manually dismissed mail
+- mail covered by a legacy local dismiss record
 - low importance mail
 - low-signal categories: `shopping`, `promotion`, `newsletter`, `spam`, `marketing`
 - obvious shopping or ad patterns such as Amazon senders, `(AD)`, discounts, promotions, unsubscribe text, and similar Chinese promotion keywords
@@ -112,19 +112,19 @@ The compact Mail widget hides:
 The expanded Mail widget provides two views:
 
 - `priority`: the same focused unread set used by the compact widget
-- `unread`: all unread, non-dismissed mail, including low-priority and marketing-classified messages
+- `unread`: all unread mail not covered by a legacy local dismiss, including low-priority and marketing-classified messages
 
-The filtered count is `unread - priority`. Read history and manually dismissed messages are not included in that number.
+The filtered count is `unread - priority`. Read history and legacy local dismiss records are not included in that number.
 
 The Notifications widget shows mail only when:
 
 - the item is not read
-- the item has not been dismissed
+- the item is not covered by a legacy local dismiss record
 - it is `needsAttention` or `critical` / `important`
 
 If a message later becomes unimportant or read, old notification rows are deleted.
 
-## Manual Dismiss
+## Mark Read From MyPage
 
 Frontend endpoints:
 
@@ -134,12 +134,12 @@ Frontend endpoints:
 Both call:
 
 ```txt
-POST /api/mail/messages/{message_id}/dismiss
+POST /api/mail/messages/{message_id}/read
 ```
 
-The Agent writes the id into `dismissed_messages` and removes any related notification row.
+Clicking `x` means the user has handled the message. The Agent first marks the real mailbox message as read using IMAP UID `STORE ... \\Seen` or Graph `PATCH isRead=true`. Only after remote success does it update local state, remove the related notification, and record a completed `mark_read` action. The old `/dismiss` route remains as a deprecated compatibility alias.
 
-Dismiss is permanent inside MyPage and has no restore UI. It does not mark, move, or delete the remote mailbox message.
+If the provider operation fails, the endpoint returns an error and the message remains visible. New actions do not write `dismissed_messages`; existing rows are retained only so historical hidden messages do not unexpectedly reappear.
 
 ## Optional Marketing Cleanup
 
@@ -180,7 +180,7 @@ Graph sync merges recent Inbox messages with unread Inbox messages. A complete u
 - `POST /api/mail/refresh`: sync configured accounts and analyze new unread mail.
 - `GET /api/mail/summary`: account state, important count, hidden count, visible mail items.
 - `GET /api/mail/messages?view=priority|unread&limit=100`: expanded priority or complete unread list with accurate counts and filter reasons.
-- `POST /api/mail/messages/{message_id}/dismiss`: hide a mail item locally.
+- `POST /api/mail/messages/{message_id}/read`: mark the remote mail item as read, then remove it from MyPage.
 - `GET /api/notifications`: shared notification center.
 - `GET /api/mail/microsoft/status`: Microsoft Graph config status.
 - `POST /api/mail/microsoft/device/start`: start Microsoft device-code auth.

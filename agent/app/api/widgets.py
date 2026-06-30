@@ -36,9 +36,9 @@ from app.services.lan_share import (
     share_status,
 )
 from app.services.message_pipeline import (
-    dismiss_mail_message,
     mail_messages,
     mail_summary,
+    mark_mail_message_read,
     microsoft_auth_status,
     notification_center,
     poll_microsoft_device_auth,
@@ -405,9 +405,15 @@ def mail_refresh_endpoint() -> dict[str, Any]:
     return envelope(data, stale=bool(errors), error="; ".join(errors) or None)
 
 
-@router.post("/mail/messages/{message_id}/dismiss")
-def mail_dismiss_endpoint(message_id: str) -> dict[str, Any]:
-    return envelope(dismiss_mail_message(message_id), stale=False)
+@router.post("/mail/messages/{message_id}/read")
+@router.post("/mail/messages/{message_id}/dismiss", deprecated=True)
+def mail_mark_read_endpoint(message_id: str) -> dict[str, Any]:
+    try:
+        return envelope(mark_mail_message_read(message_id), stale=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/mail/microsoft/status")

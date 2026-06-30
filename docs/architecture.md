@@ -232,7 +232,8 @@ Mail and notifications:
 - `GET /api/mail/summary`
 - `GET /api/mail/messages?view=priority|unread&limit=100`
 - `POST /api/mail/refresh`
-- `POST /api/mail/messages/{message_id}/dismiss`
+- `POST /api/mail/messages/{message_id}/read`
+- `POST /api/mail/messages/{message_id}/dismiss` (deprecated compatibility alias)
 - `GET /api/notifications`
 
 Microsoft Graph support:
@@ -336,9 +337,9 @@ Mail analysis:
 - DeepSeek analyzes new messages when `DEEPSEEK_API_KEY` is present.
 - A local keyword fallback keeps the UI usable without DeepSeek.
 - A versioned local safety policy runs after AI analysis. Billing, security, account, and service-change mail cannot remain low priority because of a single model decision.
-- The compact widget shows priority unread mail. The expanded widget can switch between priority and all non-dismissed unread mail.
+- The compact widget shows priority unread mail. The expanded widget can switch between priority and all unread mail that is not covered by a legacy local hide.
 - IMAP collection reconciles recent, server-unread, and locally known unread UIDs. Graph collection merges recent Inbox messages with server unread messages and reconciles handled local items.
-- Low-signal mail and manually dismissed mail are hidden from the compact Mail widget. A manual dismiss is local and permanent in MyPage; it does not mutate the mailbox.
+- Low-signal mail is hidden from the compact Mail widget. Clicking `x` marks the remote message as read through IMAP or Graph; MyPage removes it only after that operation succeeds. Historical local dismiss rows remain filterable for backward compatibility.
 - Important mail is copied into the shared notification center.
 - Accounts can opt into conservative marketing cleanup with `marketingAction: "trash"`. IMAP uses atomic UID `MOVE`; Graph updates `isRead` and moves to `deleteditems`. Only messages where AI and deterministic rules agree are processed, and MyPage never permanently deletes or sends mail.
 

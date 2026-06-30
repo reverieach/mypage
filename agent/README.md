@@ -82,7 +82,8 @@ Main endpoints:
 
 - `GET /api/mail/summary`
 - `POST /api/mail/refresh`
-- `POST /api/mail/messages/{message_id}/dismiss`
+- `POST /api/mail/messages/{message_id}/read`
+- `POST /api/mail/messages/{message_id}/dismiss` (deprecated compatibility alias)
 - `GET /api/notifications`
 
 Mail analysis uses DeepSeek when `DEEPSEEK_API_KEY` is present and falls back to local keywords otherwise.

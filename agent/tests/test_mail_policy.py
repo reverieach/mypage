@@ -10,6 +10,8 @@ from app.services.message_pipeline import (
     _graph_scopes,
     _is_high_confidence_marketing,
     _mailbox_name_from_list_line,
+    _mark_graph_message_read,
+    _mark_imap_message_read,
     _move_graph_message_to_trash,
     _valid_cached_access_token,
 )
@@ -172,6 +174,52 @@ class MailPolicyTests(unittest.TestCase):
                 ),
             ],
         )
+
+    @patch("app.services.message_pipeline._graph_json_request")
+    @patch("app.services.message_pipeline.refresh_microsoft_token", return_value="token")
+    def test_graph_mark_read_only_updates_read_state(
+        self,
+        _refresh_token,
+        graph_request,
+    ) -> None:
+        account = MailAccount(
+            id="outlook-main",
+            label="Outlook",
+            email_address="user@outlook.com",
+            host="graph.microsoft.com",
+            provider="microsoft_graph",
+        )
+        item = MessageItem(**{**message("Notice").__dict__, "source_item_id": "graph/id"})
+
+        _mark_graph_message_read(account, item)
+
+        graph_request.assert_called_once_with(
+            "https://graph.microsoft.com/v1.0/me/messages/graph%2Fid",
+            "token",
+            method="PATCH",
+            body={"isRead": True},
+        )
+
+    @patch("app.services.message_pipeline.imaplib.IMAP4_SSL")
+    def test_imap_mark_read_uses_uid_seen_flag(self, imap_client_class) -> None:
+        client = imap_client_class.return_value
+        client.select.return_value = ("OK", [b"1"])
+        client.response.return_value = ("UIDVALIDITY", [b"1"])
+        client.uid.return_value = ("OK", [b""])
+        account = MailAccount(
+            id="qq-main",
+            label="QQ",
+            email_address="user@qq.com",
+            host="imap.qq.com",
+            username="user@qq.com",
+            password="secret",
+        )
+
+        _mark_imap_message_read(account, message("Notice"))
+
+        client.select.assert_called_once_with("INBOX", readonly=False)
+        client.uid.assert_called_once_with("STORE", "1", "+FLAGS.SILENT", "(\\Seen)")
+        client.logout.assert_called_once_with()
 
 
 if __name__ == "__main__":

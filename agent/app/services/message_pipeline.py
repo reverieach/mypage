@@ -11,6 +11,7 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from email.headerregistry import AddressHeader
@@ -18,7 +19,7 @@ from email.message import EmailMessage
 from email.policy import default
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from app.services.cache import DATA_DIR, LOCAL_TZ, now_iso
 
@@ -1289,7 +1290,7 @@ def analyze_message(item: MessageItem) -> dict[str, Any]:
     return _apply_analysis_policy(item, analysis)
 
 
-def dismiss_mail_message(message_id: str) -> dict[str, Any]:
+def mark_mail_message_read(message_id: str) -> dict[str, Any]:
     ensure_schema()
     normalized_id = message_id
 
@@ -1297,22 +1298,57 @@ def dismiss_mail_message(message_id: str) -> dict[str, Any]:
         normalized_id = normalized_id.removeprefix("notification:")
 
     with _connect() as connection:
-        connection.execute(
+        row = connection.execute(
             """
-            INSERT INTO dismissed_messages (message_id, dismissed_at)
-            VALUES (?, ?)
-            ON CONFLICT(message_id)
-            DO UPDATE SET dismissed_at = excluded.dismissed_at
+            SELECT id, source, source_item_id, account_id, account_label,
+                   account_email, title, sender, received_at, snippet,
+                   web_link, raw_ref, is_read
+            FROM messages
+            WHERE id = ?
             """,
-            (normalized_id, now_iso()),
-        )
-        connection.execute(
-            "DELETE FROM notification_items WHERE source_item_id = ? OR id = ?",
-            (normalized_id, message_id),
-        )
-        connection.commit()
+            (normalized_id,),
+        ).fetchone()
 
-    return {"id": normalized_id, "dismissed": True}
+    if not row:
+        raise ValueError("mail message was not found")
+
+    if bool(row["is_read"]):
+        _record_mail_action(normalized_id, "mark_read", "completed", "Handled in MyPage")
+        return {"id": normalized_id, "markedRead": True}
+
+    try:
+        accounts = {account.id: account for account in load_mail_accounts()}
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"mail account config failed: {exc}") from exc
+    account = accounts.get(str(row["account_id"]))
+    if not account:
+        raise RuntimeError("mail account is not configured")
+
+    item = MessageItem(
+        id=str(row["id"]),
+        source=str(row["source"]),
+        source_item_id=str(row["source_item_id"]),
+        account_id=str(row["account_id"]),
+        account_label=str(row["account_label"]),
+        account_email=str(row["account_email"]),
+        title=str(row["title"]),
+        sender=str(row["sender"]),
+        received_at=str(row["received_at"]),
+        snippet=str(row["snippet"]),
+        body_text="",
+        web_link=str(row["web_link"]),
+        raw_ref=str(row["raw_ref"]),
+        is_read=False,
+    )
+
+    try:
+        _mark_message_read(account, item)
+    except (imaplib.IMAP4.error, OSError, RuntimeError) as exc:
+        _record_mail_action(normalized_id, "mark_read", "failed", "Handled in MyPage", str(exc))
+        raise RuntimeError(f"failed to mark mail as read: {exc}") from exc
+
+    _record_mail_action(normalized_id, "mark_read", "completed", "Handled in MyPage")
+    return {"id": normalized_id, "markedRead": True}
 
 
 def _save_analysis(connection: sqlite3.Connection, item: MessageItem, analysis: dict[str, Any]) -> None:
@@ -1537,9 +1573,13 @@ def _resolve_trash_folder(client: imaplib.IMAP4, account: MailAccount) -> str:
     raise RuntimeError("IMAP server did not advertise a trash folder; set trashFolder")
 
 
-def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None:
+@contextmanager
+def _selected_imap_message(
+    account: MailAccount,
+    item: MessageItem,
+) -> Iterator[tuple[imaplib.IMAP4, str]]:
     if account.provider != "imap":
-        raise RuntimeError("automatic trash currently supports IMAP accounts only")
+        raise RuntimeError("mailbox action requires an IMAP account")
 
     source_parts = item.source_item_id.rsplit(":", 1)
     if len(source_parts) != 2 or not source_parts[1].isdigit():
@@ -1557,7 +1597,7 @@ def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None
         client.login(account.username, account.password)
         status, _ = client.select(account.folder, readonly=False)
         if status != "OK":
-            raise RuntimeError(f"cannot select folder {account.folder} for cleanup")
+            raise RuntimeError(f"cannot select folder {account.folder}")
 
         uidvalidity_values = client.response("UIDVALIDITY")[1]
         current_uidvalidity = (
@@ -1566,7 +1606,18 @@ def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None
             else "default"
         )
         if current_uidvalidity != expected_uidvalidity:
-            raise RuntimeError("mailbox UIDVALIDITY changed; refusing to move a stale UID")
+            raise RuntimeError("mailbox UIDVALIDITY changed; refusing to update a stale UID")
+
+        yield client, uid
+    finally:
+        try:
+            client.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
+
+
+def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None:
+    with _selected_imap_message(account, item) as (client, uid):
 
         trash_folder = _resolve_trash_folder(client, account)
         capabilities = {
@@ -1586,11 +1637,34 @@ def _move_imap_message_to_trash(account: MailAccount, item: MessageItem) -> None
         move_status, _ = client.uid("MOVE", uid, quoted_trash)
         if move_status != "OK":
             raise RuntimeError("failed to move marketing message to trash")
-    finally:
-        try:
-            client.logout()
-        except imaplib.IMAP4.error:
-            pass
+
+
+def _mark_imap_message_read(account: MailAccount, item: MessageItem) -> None:
+    with _selected_imap_message(account, item) as (client, uid):
+        store_status, _ = client.uid("STORE", uid, "+FLAGS.SILENT", "(\\Seen)")
+        if store_status != "OK":
+            raise RuntimeError("failed to mark message as read")
+
+
+def _mark_graph_message_read(account: MailAccount, item: MessageItem) -> None:
+    token = refresh_microsoft_token(account)
+    if not token:
+        raise RuntimeError("Microsoft Graph account is not authorized")
+
+    message_id = urllib.parse.quote(item.source_item_id, safe="")
+    _graph_json_request(
+        f"https://graph.microsoft.com/v1.0/me/messages/{message_id}",
+        token,
+        method="PATCH",
+        body={"isRead": True},
+    )
+
+
+def _mark_message_read(account: MailAccount, item: MessageItem) -> None:
+    if account.provider == "microsoft_graph":
+        _mark_graph_message_read(account, item)
+        return
+    _mark_imap_message_read(account, item)
 
 
 def _move_graph_message_to_trash(account: MailAccount, item: MessageItem) -> None:
