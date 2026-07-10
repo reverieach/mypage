@@ -316,6 +316,8 @@ School notices are split into three responsibilities inside `agent/app/services/
 
 The browser-facing refresh button should be understood as "try to update the local notice cache now". It is not the only source of truth for portal login state. If the cookie is missing, stale, or rejected by the portal, the Agent may invoke the homework project's Playwright login helper to refresh the portal session, then retry the notice request once.
 
+The Agent also starts one silent School Notices refresh task after startup. It waits briefly for local networking to settle, then refreshes only when the cached notice data is empty or older than `SCHOOL_NOTICE_STARTUP_TTL_SECONDS` seconds. The default TTL is 12 hours. Startup refresh failures are logged and keep the last successful SQLite cache, so the start page can still render stale data.
+
 `GET /api/school/notices/status` exists for diagnostics and future UI. It reports the visible notice count, total cached notices, last sync attempt, last successful sync, last error, and auth health without triggering a refresh.
 
 The frontend renders icons through a stable URL:

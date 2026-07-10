@@ -402,6 +402,8 @@ SCHOOL_NOTICE_URL
 SCHOOL_NOTICE_COOKIE_PATH
 SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS
 SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS
+SCHOOL_NOTICE_STARTUP_TTL_SECONDS
+SCHOOL_NOTICE_STARTUP_DELAY_SECONDS
 ```
 
 Manual read and refresh:
@@ -421,6 +423,7 @@ Auth notes:
 - If portal cookies are missing, too old, or a request returns a CAS/login page, manual refresh may use Playwright to log into the BUPT portal and capture a fresh `JSESSIONID`.
 - If Playwright reports a missing browser executable, run `.\.venv\Scripts\python.exe -m playwright install chromium` from `E:\mypage\agent`.
 - Refresh failures keep the last successful SQLite notice cache. The API returns `stale=true` plus `lastErrorType` instead of falling back to sample data.
+- On Agent startup, MyPage waits briefly and then silently refreshes School Notices only when the cache is empty or older than `SCHOOL_NOTICE_STARTUP_TTL_SECONDS`. The default is `43200` seconds, or 12 hours. Set it to `0` to disable startup refresh. `SCHOOL_NOTICE_STARTUP_DELAY_SECONDS` controls the startup delay and defaults to `8`.
 
 Useful diagnosis:
 

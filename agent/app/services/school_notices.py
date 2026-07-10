@@ -40,6 +40,9 @@ SCHOOL_NOTICE_SESSION_MAX_AGE_SECONDS = int(
 SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS = int(
     os.getenv("SCHOOL_NOTICE_COOKIE_REFRESH_GRACE_SECONDS", str(10 * 60))
 )
+SCHOOL_NOTICE_STARTUP_TTL_SECONDS = int(
+    os.getenv("SCHOOL_NOTICE_STARTUP_TTL_SECONDS", str(12 * 60 * 60))
+)
 
 DATE_PATTERN = re.compile(
     r"(?P<year>20\d{2})[年./-]\s*(?P<month>\d{1,2})[月./-]\s*(?P<day>\d{1,2})日?"
@@ -1209,6 +1212,46 @@ def refresh_school_notices(days: int = 2) -> dict[str, Any]:
 
     data = _read_db_view(days=days)
     data["refreshed"] = True
+    return data
+
+
+def school_notices_need_startup_refresh(ttl_seconds: int | None = None, days: int = 2) -> bool:
+    ttl = SCHOOL_NOTICE_STARTUP_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+
+    if ttl <= 0:
+        return False
+
+    data = _read_db_view(days=days)
+
+    if not data["totalCount"]:
+        return True
+
+    last_sync_at = data.get("lastSyncAt")
+
+    if not last_sync_at:
+        return True
+
+    age_seconds = _seconds_since(last_sync_at)
+
+    if age_seconds is None:
+        return True
+
+    return age_seconds >= ttl
+
+
+def refresh_school_notices_if_stale(
+    *,
+    ttl_seconds: int | None = None,
+    days: int = 2,
+) -> dict[str, Any]:
+    if not school_notices_need_startup_refresh(ttl_seconds=ttl_seconds, days=days):
+        data = _read_db_view(days=days)
+        data["refreshed"] = False
+        data["skippedReason"] = "fresh"
+        return data
+
+    data = refresh_school_notices(days=days)
+    data["startupTtlSeconds"] = SCHOOL_NOTICE_STARTUP_TTL_SECONDS if ttl_seconds is None else ttl_seconds
     return data
 
 

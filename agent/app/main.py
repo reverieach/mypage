@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.widgets import router as widgets_router
 from app.services.cache import now_iso
 from app.services.message_pipeline import refresh_mail
+from app.services.school_notices import refresh_school_notices_if_stale
 
 app = FastAPI(title="MyPage Agent")
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -99,16 +100,38 @@ async def mail_sync_loop() -> None:
         await asyncio.sleep(interval)
 
 
+async def school_notice_startup_refresh() -> None:
+    delay = int(os.getenv("SCHOOL_NOTICE_STARTUP_DELAY_SECONDS", "8"))
+    ttl_seconds = int(os.getenv("SCHOOL_NOTICE_STARTUP_TTL_SECONDS", str(12 * 60 * 60)))
+
+    if ttl_seconds <= 0:
+        return
+
+    await asyncio.sleep(max(0, delay))
+
+    try:
+        await asyncio.to_thread(refresh_school_notices_if_stale, ttl_seconds=ttl_seconds, days=2)
+    except Exception as exc:
+        print(f"[warn] school notices startup refresh failed: {exc}", file=sys.stderr)
+
+
 @app.on_event("startup")
 async def start_background_tasks() -> None:
     app.state.mail_sync_task = asyncio.create_task(mail_sync_loop())
+    app.state.school_notice_startup_task = asyncio.create_task(school_notice_startup_refresh())
 
 
 @app.on_event("shutdown")
 async def stop_background_tasks() -> None:
-    task = getattr(app.state, "mail_sync_task", None)
+    tasks = [
+        getattr(app.state, "mail_sync_task", None),
+        getattr(app.state, "school_notice_startup_task", None),
+    ]
 
-    if task:
+    for task in tasks:
+        if not task:
+            continue
+
         task.cancel()
 
         with contextlib.suppress(asyncio.CancelledError):
