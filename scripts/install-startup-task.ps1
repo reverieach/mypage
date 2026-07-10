@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$StartScript = Join-Path $RepoRoot "scripts\start-agent.ps1"
+$StartScript = Join-Path $RepoRoot "scripts\start-mypage.ps1"
 $TaskName = "MyPage Local Agent"
 $StartupDir = [Environment]::GetFolderPath("Startup")
 $ShortcutPath = Join-Path $StartupDir "MyPage Local Agent.lnk"
@@ -17,7 +17,7 @@ try {
     -Action $Action `
     -Trigger $Trigger `
     -Principal $Principal `
-    -Description "Start MyPage local Agent on login." `
+    -Description "Start MyPage local Agent and LAN Share on login." `
     -Force | Out-Null
 
   Write-Host "Installed startup task: $TaskName"
@@ -30,7 +30,7 @@ catch {
   $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$StartScript`""
   $shortcut.WorkingDirectory = $RepoRoot
   $shortcut.WindowStyle = 7
-  $shortcut.Description = "Start MyPage local Agent on login."
+  $shortcut.Description = "Start MyPage local Agent and LAN Share on login."
   $shortcut.Save()
   Write-Host "Installed startup shortcut: $ShortcutPath"
 }

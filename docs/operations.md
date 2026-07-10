@@ -82,6 +82,15 @@ Status from the LAN service:
 Invoke-RestMethod http://127.0.0.1:3220/api/share/status
 ```
 
+Startup:
+
+```powershell
+.\scripts\start-mypage.ps1
+.\scripts\install-startup-task.ps1
+```
+
+The Windows logon task should point to `scripts\start-mypage.ps1`, which starts both the local desktop Agent on `127.0.0.1:3217` and the LAN Share service on `0.0.0.0:3220`. If the widget shows `Share off` while the main page still works, check whether `http://127.0.0.1:3220/api/share/status` is reachable and rerun `.\scripts\start-share.ps1` or reinstall the startup task.
+
 The Share widget shows the LAN URL and a QR button, usually similar to:
 
 ```txt

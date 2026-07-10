@@ -80,7 +80,7 @@ Build the frontend and let the Agent serve the production page:
 
 ```powershell
 .\scripts\build-extension.ps1
-.\scripts\start-agent.ps1
+.\scripts\start-mypage.ps1
 ```
 
 Open:
