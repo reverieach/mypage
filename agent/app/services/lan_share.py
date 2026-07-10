@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -23,6 +25,36 @@ SHARE_DB_PATH = Path(os.getenv("MYPAGE_SHARE_DB_PATH", str(SHARE_DIR / "lan_shar
 SHARE_FILE_DIR = Path(os.getenv("MYPAGE_SHARE_FILE_DIR", str(SHARE_DIR / "files")))
 SHARE_MAX_FILE_BYTES = int(os.getenv("MYPAGE_SHARE_MAX_FILE_BYTES", str(200 * 1024 * 1024)))
 SHARE_TOKEN_DAYS = int(os.getenv("MYPAGE_SHARE_TOKEN_DAYS", "7"))
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_VIRTUAL_ADAPTER_KEYWORDS = (
+    "bluetooth",
+    "clash",
+    "docker",
+    "hyper-v",
+    "loopback",
+    "meta",
+    "mihomo",
+    "tap",
+    "tailscale",
+    "tun",
+    "virtual",
+    "vmnet",
+    "vmware",
+    "vpn",
+    "wireguard",
+    "wsl",
+    "zerotier",
+)
+_EXCLUDED_IP_NETWORKS = tuple(
+    ipaddress.ip_network(value)
+    for value in (
+        "0.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "198.18.0.0/15",
+        "224.0.0.0/4",
+    )
+)
 
 
 def _connect() -> sqlite3.Connection:
@@ -458,20 +490,119 @@ def _default_lan_ip() -> str | None:
         return None
 
 
+def _append_unique(values: list[str], ip: str) -> None:
+    if ip not in values:
+        values.append(ip)
+
+
+def _is_shareable_lan_ip(ip: str) -> bool:
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+
+    if not isinstance(address, ipaddress.IPv4Address):
+        return False
+
+    return not any(address in network for network in _EXCLUDED_IP_NETWORKS)
+
+
+def _adapter_looks_virtual(name: str) -> bool:
+    normalized = name.casefold()
+    return any(keyword in normalized for keyword in _VIRTUAL_ADAPTER_KEYWORDS)
+
+
+def _candidate_ips_from_ipconfig() -> list[str]:
+    if sys.platform != "win32":
+        return []
+
+    try:
+        completed = subprocess.run(
+            ["ipconfig"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    adapters: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    reading_gateway = False
+
+    for raw_line in completed.stdout.splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+
+        if stripped.endswith(":") and not raw_line[:1].isspace():
+            current = {
+                "name": stripped[:-1],
+                "ips": [],
+                "hasGateway": False,
+            }
+            adapters.append(current)
+            reading_gateway = False
+            continue
+
+        if current is None:
+            continue
+
+        if "IPv4" in stripped:
+            for match in _IPV4_RE.findall(stripped):
+                if _is_shareable_lan_ip(match):
+                    current["ips"].append(match)
+
+        if "Default Gateway" in stripped:
+            reading_gateway = True
+            gateway_value = stripped.split(":", 1)[-1]
+            if _IPV4_RE.search(gateway_value):
+                current["hasGateway"] = True
+            continue
+
+        if reading_gateway:
+            if not raw_line[:1].isspace() or not stripped:
+                reading_gateway = False
+            elif _IPV4_RE.search(stripped):
+                current["hasGateway"] = True
+
+    values: list[str] = []
+    fallback_values: list[str] = []
+
+    for adapter in adapters:
+        ips = adapter["ips"]
+        if not ips or _adapter_looks_virtual(str(adapter["name"])):
+            continue
+
+        target = values if adapter["hasGateway"] else fallback_values
+        for ip in ips:
+            _append_unique(target, ip)
+
+    for ip in fallback_values:
+        _append_unique(values, ip)
+
+    return values
+
+
 def _candidate_ips() -> list[str]:
     values: list[str] = []
-    default_ip = _default_lan_ip()
 
-    if default_ip:
-        values.append(default_ip)
+    for ip in _candidate_ips_from_ipconfig():
+        _append_unique(values, ip)
+
+    default_ip = _default_lan_ip()
+    if default_ip and _is_shareable_lan_ip(default_ip):
+        _append_unique(values, default_ip)
 
     try:
         host = socket.gethostname()
         for info in socket.getaddrinfo(host, None, family=socket.AF_INET):
             ip = str(info[4][0])
 
-            if not ip.startswith("127.") and ip not in values:
-                values.append(ip)
+            if _is_shareable_lan_ip(ip):
+                _append_unique(values, ip)
     except OSError:
         pass
 
