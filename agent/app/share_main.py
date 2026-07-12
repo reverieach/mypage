@@ -433,11 +433,44 @@ SHARE_PAGE_HTML = r"""
       }
 
       async function copyText(text) {
+        const value = String(text ?? '');
         try {
-          await navigator.clipboard.writeText(text);
+          if (!navigator.clipboard || !window.isSecureContext) {
+            throw new Error('Clipboard API unavailable');
+          }
+          await navigator.clipboard.writeText(value);
           toast('已复制');
         } catch {
-          toast('复制失败，请长按选择');
+          if (copyTextFallback(value)) {
+            toast('已复制');
+          } else {
+            toast('复制失败，请长按选择');
+          }
+        }
+      }
+
+      function copyTextFallback(text) {
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.top = '12px';
+        input.style.left = '12px';
+        input.style.width = '1px';
+        input.style.height = '1px';
+        input.style.opacity = '0.01';
+        input.style.fontSize = '16px';
+        document.body.appendChild(input);
+
+        try {
+          input.focus({ preventScroll: true });
+          input.select();
+          input.setSelectionRange(0, input.value.length);
+          return document.execCommand('copy');
+        } catch {
+          return false;
+        } finally {
+          input.remove();
         }
       }
 
