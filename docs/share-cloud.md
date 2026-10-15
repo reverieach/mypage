@@ -5,12 +5,15 @@
 ## 当前上线状态（2026-10-15）
 
 - 代码、主页内嵌入口和简单独立页面已实现；ECS 的独立服务已安装。原 rhine 服务保持运行，主 Agent 未对公网开放。
-- **公网尚不可用**：`http://share.reverieach.com` 实测为阿里云“备案阻断页”，提示当前备案状态不符合访问要求。HTTP-01 证书验证因此收到 403，尚未签发 Share HTTPS 证书。先由域名所有者处理备案/接入状态，再重新签发证书并验收。不要绕过浏览器证书警告。
-- 生产 API 拒绝明文 HTTP 配对/收发；未启用 HTTPS 时网页禁用配对。此时不要给其他设备生成生产配对码。
-- 已通过：9 项后端测试、2 项客户端协议测试、前端 lint/build；本机两个网页上下文的自动转云、上传、接收端重新打开后领取、下载 SHA-256 一致。
-- **直连未验收通过**：内置浏览器之间、Edge 两个页面之间都出现 ICE 握手超时（有本地候选、对方已应答）；尚未确定是网络/VPN/mDNS 环境还是实现兼容性问题，不能宣称已经验证局域网直传。手机、真实 Windows 和线上 HTTPS 收发均待测。
+- **HTTPS 已配置**：通过手动 DNS-01 签发 Share 专属证书，Nginx 已安装；到期时间为 2027-01-13 22:12:01（北京时间）。内置浏览器已正常打开 HTTPS 配对页，无证书警告；服务器 TLS `/health` 为 200，未认证 API 为 401，Rhine HTTPS 仍为 200。
+- **备案仍是独立验收条件**：此前 HTTP 实测为阿里云“备案阻断页”，HTTP-01 验证收到 403。现在 HTTPS 某一路径能打开不代表备案完成或所有运营商稳定可达。按用户要求，正式手机/Mac/Windows 联测留到备案通过后，不绕过证书警告。
+- **续期待完成**：当前是手动 DNS 验证，不会自动续期。备案放行后按下方步骤切换 nginx HTTP-01 并验证自动续期；若届时仍不通，需要在到期前人工 DNS 续期。未创建阿里云 AccessKey 或扩大 DNS 权限。
+- 生产 API 拒绝明文 HTTP 配对/收发；未启用 HTTPS 时网页禁用配对。
+- 已通过：9 项后端测试、5 项客户端协议/握手回归测试；此前前端 lint/build；本机两个网页上下文的自动转云、上传、接收端重新打开后领取、下载 SHA-256 一致。
+- **直连仍未验收通过**：内置浏览器和此前 Edge 双页面测试均超时。本次诊断为双方各 2 个 mDNS host 候选、SDP 应答已应用、ICE checking，约 190 次候选对探测、0 响应。官方 WebRTC 无中继示例在同机也未建立通道，更指向本机直连网络/权限环境，但具体拦截点尚未证实，不能宣称 LAN 已修好。没有关闭 VPN/防火墙或降低浏览器保护。
+- 已修复失败会话占用接收槽的问题，并补充拒绝/关闭时立即结束握手、自动转云提示和无 IP/凭证的诊断。真实手机、Windows 与线上 HTTPS 收发仍待测。
 
-阿里云关于备案/接入与访问的说明：[备案期间对网站访问的影响](https://help.aliyun.com/zh/icp-filing/the-influence-of-the-record-during-the-site-visit)。域名所有者完成备案/接入后，再按下方部署步骤继续，不需要重写客户端。
+阿里云关于备案/接入与访问的说明：[备案期间对网站访问的影响](https://help.aliyun.com/zh/icp-filing/the-influence-of-the-record-during-the-site-visit)。备案通过后继续做网络验收与续期验证，不需要重写客户端。
 
 ## 首版边界（重要）
 
@@ -49,6 +52,28 @@ curl --fail https://share.reverieach.com/health
 ```
 
 安装位置：`/opt/mypage-share`；私有数据：`/var/lib/mypage-share`；服务：`mypage-share.service`；后端只监听 `127.0.0.1:3230`。安装脚本再次运行不会覆盖已经签发证书的 nginx 配置。修改部署模板后需要管理员审阅差异，不会自动覆盖线上设置。
+
+### 当前证书的续期交接
+
+DNS-01 使用 `_acme-challenge.share` TXT 验证，证书已经安装；不要重新覆盖 Nginx 或读取/复制私钥。手动验证没有自动续期能力，现有 `certbot.timer` 也不能替代验证。
+
+备案通过、HTTP 挑战路径正常可达后，使用 Certbot 2.3+ 的 `reconfigure` 测试新验证方式；只有测试成功才保存续期参数：
+
+```bash
+sudo certbot reconfigure --cert-name share.reverieach.com --authenticator nginx --preferred-challenges http --non-interactive
+sudo certbot renew --cert-name share.reverieach.com --dry-run
+sudo systemctl status certbot.timer --no-pager
+```
+
+若失败，保留当前有效证书，不连续强制签发。必要时在到期前重新执行手动 DNS 签发命令，按新挑战值更新 TXT 并核对公开 DNS，然后安装证书；不得复用旧挑战值。自动 DNS 续期需要额外的最小权限授权，不能擅自创建管理密钥。参考：[Certbot 续期配置说明](https://eff-certbot.readthedocs.io/en/stable/using.html#modifying-the-renewal-configuration-of-existing-certificates)。
+
+### 直连排障与备案后验收
+
+1. 两端刷新网页并选择「仅直连」，确保目标显示在线；复制失败诊断即可，不必提供凭证或 SDP 原文。
+2. 「未应答/远端候选 0」先查 WebSocket、接收页状态和浏览器权限；「已应答、有候选但请求多/响应 0」重点查本机/路由器的 UDP、mDNS、VPN 路由及访客网络隔离。
+3. 有需要时由用户检查 macOS/手机的本地网络授权及浏览器站点权限；任何权限变更、VPN 规则调整单独确认，不以关闭安全保护作为修复。
+4. 用实际手机和 Mac 同一 Wi-Fi 测直连、校验文件，再测手机移动网络与 Windows 云暂存。单机两页测试或模拟协议测试不能代替真实 LAN 验收。
+5. 连接失败前可自动转云；已经开始传文件后失败不自动重传，避免重复或误传。直连成功才会显示「设备直连 · 不上传云端」。
 
 初次配对（输出为临时敏感信息，不要复制进 issue 或提交）：
 

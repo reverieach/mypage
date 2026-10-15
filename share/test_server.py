@@ -112,6 +112,11 @@ class RelayTests(unittest.TestCase):
                 self.assertEqual(b.receive_json()["type"], "ready")
                 a.send_json({"type": "offer", "to": self.b["id"], "session": "test", "sdp": "v=0"})
                 self.assertEqual(b.receive_json()["from"], self.a["id"])
+                a.send_json({"type": "reject", "to": self.b["id"], "session": "test"})
+                cancelled = b.receive_json()
+                self.assertEqual(cancelled["type"], "reject")
+                self.assertEqual(cancelled["session"], "test")
+                self.assertEqual(cancelled["from"], self.a["id"])
                 devices = self.client.get("/api/devices", headers=self.headers(self.a)).json()["devices"]
                 self.assertTrue(next(d for d in devices if d["id"] == self.b["id"])["online"])
         devices = self.client.get("/api/devices", headers=self.headers(self.a)).json()["devices"]

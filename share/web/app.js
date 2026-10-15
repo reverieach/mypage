@@ -53,8 +53,8 @@ function connect() {
     } else if (data.type === 'answer' || data.type === 'reject') {
       const session = sessions.get(data.session);
       if (!session || session.peer !== data.from) return;
-      if (data.type === 'reject') session.close();
-      else { session.answerReceived = true; session.pc.setRemoteDescription({type:'answer', sdp:data.sdp}).catch(() => session.close()); }
+      if (data.type === 'reject') session.close(new Error('对方未能建立直连，请稍后重试或使用云端'));
+      else { session.answerReceived = true; session.pc.setRemoteDescription({type:'answer', sdp:data.sdp}).catch(() => session.close(new Error('直连应答无效，请刷新两端页面后重试'))); }
     }
   };
   socket.onclose = (event) => {
@@ -98,12 +98,26 @@ function makeSession(id, peer) {
   if (sessions.size >= 4) throw new Error('直连会话过多');
   // Host candidates only: no TURN server and therefore no hidden relay charge.
   const pc = new RTCPeerConnection({iceServers:[]});
-  const session = {pc, peer, id, channel:null, close() {
-    clearTimeout(session.timer); pc.close(); sessions.delete(id);
-    if (session.cancel) session.cancel(new Error('直连断开，请重新发送（不会自动重传到云端）'));
+  const session = {pc, peer, id, channel:null, closed:false, close(error = new Error('直连断开，请重新发送（不会自动重传到云端）')) {
+    if (session.closed) return;
+    session.closed = true;
+    clearTimeout(session.timer); clearTimeout(session.handshakeTimer); pc.close(); sessions.delete(id);
+    session.openReject?.(error);
+    session.cancel?.(error);
   }};
   session.timer = setTimeout(() => session.close(), 180000);
   sessions.set(id, session); return session;
+}
+async function directDiagnostic(session) {
+  const pc = session.pc;
+  const candidates = (description) => description?.sdp.match(/^a=candidate:.*$/gm) || [];
+  const local = candidates(pc.localDescription), remote = candidates(pc.remoteDescription);
+  let pairs = [], synthetic = 0;
+  try { (await pc.getStats()).forEach((stat) => {
+    if (stat.type === 'candidate-pair') pairs.push(`${stat.state}[请求${stat.requestsSent || 0}/响应${stat.responsesReceived || 0}]`);
+    if (stat.type === 'remote-candidate' && /^198\.(18|19)\./.test(stat.address || '')) synthetic++;
+  }); } catch { /* closed */ }
+  return `ICE ${pc.iceConnectionState}；本地/远端候选 ${local.length}/${remote.length}；mDNS ${local.filter((c) => c.includes('.local')).length}/${remote.filter((c) => c.includes('.local')).length}；候选对 ${pairs.join(',') || '无'}${synthetic ? `；测试网段远端 ${synthetic}` : ''}；对方${session.answerReceived ? '已' : '未'}应答`;
 }
 async function openDirect(peer) {
   if (!window.RTCPeerConnection || !roster.find((d) => d.id === peer)?.online) throw new Error('对方页面未在线');
@@ -111,19 +125,25 @@ async function openDirect(peer) {
   const channel = session.channel = session.pc.createDataChannel('mypage-file', {ordered:true});
   try {
     const opened = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const candidates = (session.pc.localDescription?.sdp.match(/a=candidate:/g) || []).length;
-        reject(new Error(`直连未建立（本地候选 ${candidates}，对方${session.answerReceived ? '已' : '未'}应答）。请检查浏览器权限、VPN或网络隔离；可改用云端。`));
+      session.openReject = reject;
+      session.handshakeTimer = setTimeout(async () => {
+        reject(new Error(`直连未建立（${await directDiagnostic(session)}）。可改用云端；诊断不包含 IP 或凭证。`));
       }, 12000);
-      channel.onopen = () => { clearTimeout(timer); resolve(); };
-      channel.onerror = () => { clearTimeout(timer); reject(new Error('直连失败')); };
+      channel.onopen = () => { clearTimeout(session.handshakeTimer); session.openReject = null; resolve(); };
+      channel.onerror = () => reject(new Error('直连失败'));
+      channel.onclose = () => reject(new Error('直连通道已关闭'));
     });
     // Attach a handler immediately to avoid an unhandled rejection while gathering ICE.
     opened.catch(() => {});
     await session.pc.setLocalDescription(await session.pc.createOffer()); await gathering(session.pc);
+    if (session.closed) { await opened; throw new Error('直连会话已关闭'); }
     signal({type:'offer', to:peer, session:session.id, sdp:session.pc.localDescription.sdp});
     await opened; return session;
-  } catch (error) { session.close(); throw error; }
+  } catch (error) {
+    // Release the receiver's slot immediately instead of leaving failed attempts for 3 minutes.
+    try { signal({type:'reject', to:peer, session:session.id}); } catch { /* disconnected */ }
+    session.close(error); throw error;
+  }
 }
 async function hash(bytes) {
   const value = await crypto.subtle.digest('SHA-256', bytes);
@@ -242,7 +262,7 @@ async function send(file = null) {
     if (mode !== 'cloud' && item.size <= DIRECT_LIMIT) {
       $('channel').textContent = '尝试直连…';
       try { session = await openDirect(recipient); }
-      catch (error) { if (mode === 'direct') throw error; }
+      catch (error) { if (mode === 'direct') throw error; message(`直连暂不可用，改为云端暂存。${error.message}`); }
     } else if (mode === 'direct') throw new Error('直连单文件上限 32 MiB，请选择云端');
     if (session) {
       $('channel').textContent = '设备直连 · 不上传云端';
