@@ -18,7 +18,7 @@ class RelayTests(unittest.TestCase):
         server.PEERS.clear()
         server.UPLOADS.clear()
         server.ATTEMPTS.clear()
-        self.client = TestClient(server.app)
+        self.client = TestClient(server.app, base_url="https://share.reverieach.com")
         self.client.__enter__()
         self.a = self.pair("Mac")
         self.b = self.pair("Windows")
@@ -104,10 +104,10 @@ class RelayTests(unittest.TestCase):
 
     def test_authenticated_signal_and_online_status(self):
         origin = {"Origin": "https://share.reverieach.com"}
-        with self.client.websocket_connect("/ws", headers=origin) as a:
+        with self.client.websocket_connect("wss://share.reverieach.com/ws", headers=origin) as a:
             a.send_json({"token": self.a["token"]})
             self.assertEqual(a.receive_json()["type"], "ready")
-            with self.client.websocket_connect("/ws", headers=origin) as b:
+            with self.client.websocket_connect("wss://share.reverieach.com/ws", headers=origin) as b:
                 b.send_json({"token": self.b["token"]})
                 self.assertEqual(b.receive_json()["type"], "ready")
                 a.send_json({"type": "offer", "to": self.b["id"], "session": "test", "sdp": "v=0"})
@@ -123,6 +123,10 @@ class RelayTests(unittest.TestCase):
         self.assertIn("Quick Text", response.text)
         for path in ("/api/config/load", "/api/mail/summary", "/docs"):
             self.assertEqual(self.client.get(path).status_code, 404)
+
+    def test_plain_http_cannot_pair_or_read_files(self):
+        self.assertEqual(self.client.post("http://share.reverieach.com/api/pair", json={}).status_code, 426)
+        self.assertEqual(self.client.get("http://share.reverieach.com/api/items", headers=self.headers(self.a)).status_code, 426)
 
 
 if __name__ == "__main__":

@@ -317,4 +317,7 @@ document.querySelector('.drop').ondragover = (event) => event.preventDefault();
 document.querySelector('.drop').ondrop = (event) => { event.preventDefault(); if (!busy) sendFiles(Array.from(event.dataTransfer.files)); };
 setInterval(() => { if (identity && !busy) refresh().catch(() => {}); }, 15000);
 window.addEventListener('beforeunload', (event) => { if (busy || received.some((item) => item.kind === 'file')) { event.preventDefault(); event.returnValue = ''; } });
-if (identity?.token) showApp();
+if (!window.isSecureContext) {
+  $('pair').disabled = true;
+  message('请使用 HTTPS 地址。证书尚未启用时，不要输入配对码或传输文件。');
+} else if (identity?.token) showApp();

@@ -8,6 +8,8 @@
 
 先阅读仓库 AGENTS.md 和 docs/share-cloud.md。使用现有 MyPage 目录，不要另建一份导致扩展路径变化。先检查 git status、当前分支及启动脚本，保留所有本地修改、agent/app/data、.env、壁纸、邮箱凭证和 E:\MyPageShare；不要 reset --hard / clean / 覆盖个人数据。工作区干净且 master 可快进时 git pull --ff-only；有冲突或分叉先说明情况。
 
+先核对 docs/share-cloud.md 的“当前上线状态”：2026-10-15 实测域名被阿里云备案规则阻断，HTTPS 尚未完成；直连也尚未在真实浏览器中验收通过。若仍被阻断，可完成本机更新，但必须明确告知云功能尚不可用，不要把它误诊为 Windows/Edge 安装失败，不要绕过证书警告、关闭安全设置或重新部署云服务器。
+
 这次新增的是私人三端传输：手机、Mac、Windows 都可以互相发送文件/文字。云端入口为 https://share.reverieach.com。主页 Share 组件的「跨设备」页签内嵌网页；「原局域网共享」保留旧功能。直连要求两端页面保持打开，连接失败走云暂存；关闭页面后不做 Agent 自动后台接收。无需安装 share/requirements.txt 到 Windows Agent，也无需在 Windows 上启动云服务。
 
 在 frontend 中安装依赖，运行 npm run lint 和 npm run build。若 npm ci 因现有 lockfile 与 package.json 不一致失败，不要乱改依赖版本，可使用 npm install --no-package-lock，并记录该问题。使用原 scripts/restart-agent.ps1 和 scripts/restart-share.ps1 重启对应的 MyPage 服务，确认主 Agent 仍只监听 127.0.0.1:3217。不要改变邮箱、学校通知等其他配置，不要开放公网 3217/3220。
@@ -23,5 +25,7 @@
 6. 原 LAN 页签以及原网站、壁纸、布局不受影响。
 
 注意：首版直连文件最大32 MiB、云端200 MiB；云文件24小时过期，直连接收文件刷新前要保存。只有页面打开时参与直连，手机后台/锁屏及电脑休眠可能中断。任何未实测的平台或通道都要明确标注。
+
+配对仅首次需要；此浏览器记住设备90天，不要求每次输入。不要使用无痕窗口或清除站点数据，否则需要重新配对。
 
 完成后告诉我更新到的提交、扩展路径、测试结果和仍需用户配合的步骤。

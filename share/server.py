@@ -13,7 +13,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("SHARE_DATA_DIR", str(Path.home() / ".mypage-relay")))
@@ -126,7 +126,11 @@ app = FastAPI(title="MyPage Share", docs_url=None, redoc_url=None, openapi_url=N
 
 @app.middleware("http")
 async def security_headers(request, call_next):
-    response = await call_next(request)
+    require_tls = os.environ.get("SHARE_ORIGIN", "https://share.reverieach.com").startswith("https:")
+    if require_tls and request.url.scheme != "https" and request.url.path.startswith("/api/"):
+        response = JSONResponse({"detail": "请通过 HTTPS 使用；证书未启用时不可配对或传输"}, status_code=426)
+    else:
+        response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -342,7 +346,7 @@ async def signal(ws: WebSocket):
     # Origin check protects browser connections; credentials are still required independently.
     origin = ws.headers.get("origin", "")
     expected = os.environ.get("SHARE_ORIGIN", "https://share.reverieach.com")
-    if origin not in expected.split(","):
+    if origin not in expected.split(",") or (expected.startswith("https:") and ws.url.scheme != "wss"):
         await ws.close(code=1008)
         return
     await ws.accept()

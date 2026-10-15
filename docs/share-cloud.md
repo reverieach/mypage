@@ -2,6 +2,16 @@
 
 手机、Mac、Windows 都访问 `https://share.reverieach.com`。MyPage 的 Share 组件默认内嵌同一个页面；不需要额外打开浏览器标签页。原来的 LAN Share 保留在「原局域网共享」页签，旧数据不会自动上传。
 
+## 当前上线状态（2026-10-15）
+
+- 代码、主页内嵌入口和简单独立页面已实现；ECS 的独立服务已安装。原 rhine 服务保持运行，主 Agent 未对公网开放。
+- **公网尚不可用**：`http://share.reverieach.com` 实测为阿里云“备案阻断页”，提示当前备案状态不符合访问要求。HTTP-01 证书验证因此收到 403，尚未签发 Share HTTPS 证书。先由域名所有者处理备案/接入状态，再重新签发证书并验收。不要绕过浏览器证书警告。
+- 生产 API 拒绝明文 HTTP 配对/收发；未启用 HTTPS 时网页禁用配对。此时不要给其他设备生成生产配对码。
+- 已通过：9 项后端测试、2 项客户端协议测试、前端 lint/build；本机两个网页上下文的自动转云、上传、接收端重新打开后领取、下载 SHA-256 一致。
+- **直连未验收通过**：内置浏览器之间、Edge 两个页面之间都出现 ICE 握手超时（有本地候选、对方已应答）；尚未确定是网络/VPN/mDNS 环境还是实现兼容性问题，不能宣称已经验证局域网直传。手机、真实 Windows 和线上 HTTPS 收发均待测。
+
+阿里云关于备案/接入与访问的说明：[备案期间对网站访问的影响](https://help.aliyun.com/zh/icp-filing/the-influence-of-the-record-during-the-site-visit)。域名所有者完成备案/接入后，再按下方部署步骤继续，不需要重写客户端。
+
 ## 首版边界（重要）
 
 - 两端页面在线时，自动尝试 WebRTC DataChannel 直连；约 12 秒内无法建立则走 HTTPS 云暂存。
@@ -63,6 +73,7 @@ sudo -u mypage-share env SHARE_DATA_DIR=/var/lib/mypage-share /opt/mypage-share/
 python -m pip install -r share/requirements-test.txt
 python -m unittest share.test_server -v
 node --check share/web/app.js
+node --test share/test_client.mjs
 cd frontend
 npm run lint
 npm run build

@@ -21,7 +21,7 @@ function client(name) {
     setTimeout, clearTimeout, setInterval:()=>0, clearInterval(){},
     navigator:{}, confirm:()=>true, Option:function(text,value){this.text=text;this.value=value;},
   });
-  context.window = {addEventListener(){}};
+  context.window = {isSecureContext:true, addEventListener(){}};
   vm.runInContext(readFileSync(new URL('./web/app.js', import.meta.url), 'utf8'), context);
   vm.runInContext(`identity = {id:${JSON.stringify(name)}, token:'test'};`, context);
   return context;
