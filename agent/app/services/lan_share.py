@@ -20,7 +20,8 @@ from app.services.cache import now_iso
 
 LOCAL_TZ = timezone(timedelta(hours=8))
 SHARE_PORT = int(os.getenv("MYPAGE_SHARE_PORT", "3220"))
-SHARE_DIR = Path(os.getenv("MYPAGE_SHARE_DIR", "E:/MyPageShare"))
+_DEFAULT_SHARE_DIR = "E:/MyPageShare" if sys.platform == "win32" else str(Path.home() / "MyPageShare")
+SHARE_DIR = Path(os.getenv("MYPAGE_SHARE_DIR", _DEFAULT_SHARE_DIR))
 SHARE_DB_PATH = Path(os.getenv("MYPAGE_SHARE_DB_PATH", str(SHARE_DIR / "lan_share.sqlite3")))
 SHARE_FILE_DIR = Path(os.getenv("MYPAGE_SHARE_FILE_DIR", str(SHARE_DIR / "files")))
 SHARE_MAX_FILE_BYTES = int(os.getenv("MYPAGE_SHARE_MAX_FILE_BYTES", str(200 * 1024 * 1024)))
@@ -360,6 +361,10 @@ def get_file_record(item_id: str) -> tuple[Path, dict[str, Any]]:
 def reveal_file(item_id: str) -> dict[str, Any]:
     path, item = get_file_record(item_id)
 
+    if sys.platform == "darwin":
+        subprocess.run(["open", "-R", str(path)], check=True, timeout=10)
+        return {"opened": True, "path": str(path), "item": item}
+
     if sys.platform != "win32":
         raise OSError("Reveal in folder is only supported on Windows")
 
@@ -374,6 +379,13 @@ def reveal_file(item_id: str) -> dict[str, Any]:
 
 def copy_file_to_clipboard(item_id: str) -> dict[str, Any]:
     path, item = get_file_record(item_id)
+
+    if sys.platform == "darwin":
+        subprocess.run(
+            ["osascript", "-e", "on run argv\nset the clipboard to (POSIX file (item 1 of argv) as alias)\nend run", str(path)],
+            check=True, timeout=10, capture_output=True,
+        )
+        return {"copied": True, "path": str(path), "item": item}
 
     if sys.platform != "win32":
         raise OSError("Copy file is only supported on Windows")

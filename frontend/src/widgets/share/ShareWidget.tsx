@@ -285,6 +285,29 @@ function ShareQrDialog({ url, pin }: { url: string; pin?: string | null }) {
 }
 
 export function ShareWidget({ config }: { config: DataWidgetConfig }) {
+  const [tab, setTab] = useState<'cloud' | 'lan'>('cloud')
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex items-center gap-2 text-xs">
+        <button type="button" onClick={() => setTab('cloud')} className={cn('rounded-full px-3 py-1.5', tab === 'cloud' ? 'bg-white/20 text-white' : 'text-white/50')}>跨设备</button>
+        <button type="button" onClick={() => setTab('lan')} className={cn('rounded-full px-3 py-1.5', tab === 'lan' ? 'bg-white/20 text-white' : 'text-white/50')}>原局域网共享</button>
+        <a href="https://share.reverieach.com" target="_blank" rel="noreferrer" className="ml-auto text-white/50 hover:text-white/80">独立页面 ↗</a>
+      </div>
+      {/* Keep the transport frame mounted when switching tabs so it can still receive. */}
+      <iframe
+        src="https://share.reverieach.com/?embed=1"
+        title="MyPage 跨设备传输"
+        allow="clipboard-write"
+        referrerPolicy="no-referrer"
+        className={cn('min-h-0 w-full flex-1 rounded-2xl border-0', tab !== 'cloud' && 'hidden')}
+      />
+      {tab === 'lan' && <div className="min-h-0 flex-1"><LanSharePanel config={config} /></div>}
+    </div>
+  )
+}
+
+function LanSharePanel({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<LanShareStatusData>(config)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)

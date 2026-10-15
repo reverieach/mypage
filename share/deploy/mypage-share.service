@@ -1,0 +1,29 @@
+[Unit]
+Description=MyPage private file relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mypage-share
+Group=mypage-share
+WorkingDirectory=/opt/mypage-share
+Environment=SHARE_DATA_DIR=/var/lib/mypage-share
+Environment=SHARE_ORIGIN=https://share.reverieach.com
+Environment=SHARE_MONTHLY_BYTES=16106127360
+Environment=SHARE_STORAGE_BYTES=2147483648
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/mypage-share/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 3230 --workers 1 --no-access-log --ws-max-size 65536 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mypage-share
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

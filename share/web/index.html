@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MyPage Share</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<main class="page">
+  <header class="topbar"><div><h1>MyPage Share</h1><div id="status" class="sub">私人设备间的文字与文件传输</div></div><button id="refresh" class="pill" hidden>刷新</button></header>
+  <section id="login" class="card">
+    <h2>连接你的设备</h2>
+    <p class="sub">输入已配对设备生成的单次配对码（10 分钟有效）。第一次由服务器管理员生成。</p>
+    <label>设备名称<input id="name" maxlength="40" placeholder="例如：我的手机 / Mac / 家里 Windows" autocomplete="off"></label>
+    <label>配对码<input id="code" maxlength="32" placeholder="16 位配对码" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <button id="pair" class="primary">配对此设备</button>
+    <p class="sub">首次配对后，此浏览器会记住设备 90 天，无需每次输入。清除浏览器数据或换浏览器后需重新配对。不要把配对码发送给陌生人。</p>
+  </section>
+  <div id="workspace" hidden>
+    <section class="card device-card">
+      <div class="section-title"><span id="deviceName"></span><button id="invite" class="pill">添加设备</button></div>
+      <div id="inviteCode" class="sub" hidden></div>
+      <label>发送给<select id="target"><option value="">请先配对另一台设备</option></select></label>
+      <div class="mode-row"><select id="mode" aria-label="传输方式"><option value="auto">自动：优先直连</option><option value="direct">仅直连</option><option value="cloud">仅云端</option></select><span id="channel" class="sub">等待发送</span></div>
+      <p id="usage" class="sub"></p>
+    </section>
+    <section class="card">
+      <div class="section-title"><span>Quick Text</span><span class="sub">文字 / 链接</span></div>
+      <textarea id="text" placeholder="粘贴或输入要发送的内容…" maxlength="16000"></textarea>
+      <button id="sendText" class="primary">发送文字</button>
+    </section>
+    <section class="card">
+      <div class="section-title"><span>Files</span><span class="sub">最大 200 MiB</span></div>
+      <label class="drop"><input id="files" type="file" multiple><strong>选择文件 / 图片</strong><span class="sub">也可以拖入文件</span></label>
+      <progress id="progress" value="0" max="100" hidden></progress><div id="progressText" class="sub" aria-live="polite"></div>
+      <p class="sub">直连接收后请及时保存；云端内容 24 小时后自动删除。超过 32 MiB 的文件首版走云端，以控制手机内存占用。</p>
+    </section>
+    <section class="card"><div class="section-title"><span>Recent</span><span class="sub">仅自己收发的内容</span></div><div id="items" class="list"></div></section>
+    <footer class="sub">主页组件打开时可直连；关闭、休眠或浏览器暂停时改为云暂存。<br>HTTPS 不等于端到端加密：云端文件以原文件暂存，请勿传敏感凭据。<button id="forget" class="pill">取消此设备配对</button></footer>
+  </div>
+  <div id="message" role="status" aria-live="polite"></div>
+</main>
+</body>
+</html>

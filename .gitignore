@@ -21,3 +21,7 @@ agent/app/data/*.sqlite3
 agent/app/data/link-icons/
 agent/app/data/wallpapers/
 !agent/app/data/.gitkeep
+share/.data/
+share/.venv/
+*.sqlite3-wal
+*.sqlite3-shm

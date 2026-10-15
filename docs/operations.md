@@ -49,6 +49,8 @@ Stop:
 
 ## LAN Share Setup
 
+跨网络传输与统一手机域名见 [share-cloud.md](share-cloud.md)。下面的 LAN 功能继续保留，不自动上传旧共享数据。Windows 更新交接见 [windows-share-update-prompt.md](windows-share-update-prompt.md)。
+
 LAN Share is the optional same-network service for phone clipboard text and phone-to-PC file transfer. It is a separate process from the main Agent.
 
 Start:
