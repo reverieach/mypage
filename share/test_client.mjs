@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 
 function element() {
-  return {value:'', options:[], classList:{add(){}, toggle(){}}, append(){}, replaceChildren(){},
+  return {value:'', options:[], children:[], classList:{add(){}, toggle(){}}, append(...nodes){this.children.push(...nodes);}, prepend(...nodes){this.children.unshift(...nodes);}, setAttribute(){}, replaceChildren(...nodes){this.children=nodes;},
     addEventListener(){}, replaceWith(){}, click(){}, add(option){this.options.push(option);}};
 }
 function client(name, overrides = {}) {
@@ -118,4 +118,56 @@ test('oversized direct metadata is rejected without allocating a file buffer', a
   await b.channel.onmessage({data:JSON.stringify({type:'begin', kind:'file', size:33*1024*1024, name:'large'})});
   assert.equal(closed,true); assert.ok(replies[0].error);
   assert.equal(vm.runInContext('received.length', b),0);
+});
+
+test('image preview downloads once across refreshes, shares blob, and revokes on removal', async () => {
+  const calls = [], revoked = [];
+  const a = client('A', {fetch:async (url, options) => {
+    calls.push({url, options}); return {ok:true, blob:async()=>new Blob(['png'])};
+  }, URL:{createObjectURL:()=> 'blob:image', revokeObjectURL:(url)=>revoked.push(url)}});
+  vm.runInContext("cloudItems=[{id:'photo',kind:'file',name:'photo.PNG',size:3,created:1}]; renderItems();", a);
+  await new Promise(setImmediate);
+  vm.runInContext('renderItems()', a);
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer test');
+  assert.equal(calls[0].url, '/api/items/photo/file');
+  assert.equal(await vm.runInContext('loadImage(cloudItems[0]).then(v=>v.blob.type)', a), 'image/png');
+  assert.equal(vm.runInContext("$('items').children[0].children.at(-1).children.map(b=>b.textContent).join(',')", a), '保存图片,复制图片');
+  vm.runInContext('cloudItems=[]; renderItems()', a);
+  await new Promise(setImmediate);
+  assert.deepEqual(revoked, ['blob:image']);
+});
+
+test('direct image preview uses local blob without credentials; unsafe types have no preview', async () => {
+  let request;
+  const a = client('A', {fetch:async (...args) => { request=args; return {ok:true,blob:async()=>new Blob(['jpg'])}; }});
+  await vm.runInContext("loadImage({id:'direct',kind:'file',name:'a.jpg',size:3,direct:true,blob:new Blob(['jpg']),url:'blob:direct'})", a);
+  assert.equal(request, undefined);
+  assert.equal(vm.runInContext("imageType({kind:'file',name:'a.svg'})",a),'');
+  assert.equal(vm.runInContext("imageType({kind:'text',name:'a.png'})",a),'');
+});
+
+test('large images require explicit preview and failed previews do not redownload every refresh', async () => {
+  let calls = 0;
+  const a = client('A', {fetch:async()=>{calls++; return {ok:false,json:async()=>({detail:'budget exhausted'})};}});
+  vm.runInContext("cloudItems=[{id:'large',kind:'file',name:'big.jpg',size:9*1024*1024}]; renderItems();",a);
+  assert.equal(calls,0);
+  vm.runInContext("cloudItems=[{id:'small',kind:'file',name:'small.jpg',size:3}]; renderItems();",a);
+  await new Promise(setImmediate);
+  vm.runInContext('renderItems()',a);
+  await new Promise(setImmediate);
+  assert.equal(calls,1);
+  await assert.rejects(vm.runInContext("loadImage({id:'huge',size:65*1024*1024})",a), /内存限额/);
+});
+
+test('copy image writes a promised PNG during the click gesture and reports unsupported browsers', async () => {
+  let written;
+  const a = client('A', {ClipboardItem:class {constructor(data){this.data=data;}},
+    navigator:{clipboard:{write(items){written=items;return Promise.resolve();}}}});
+  vm.runInContext("imagePng=async()=>new Blob(['png'],{type:'image/png'}); copyImage({})",a);
+  assert.ok(written, 'clipboard write must happen before awaiting image conversion');
+  assert.equal((await written[0].data['image/png']).type,'image/png');
+  const unsupported = client('A');
+  assert.throws(()=>vm.runInContext('copyImage({})',unsupported),/不支持复制图片/);
 });

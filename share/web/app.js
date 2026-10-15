@@ -5,6 +5,8 @@ const DIRECT_LIMIT = 32 * 1024 * 1024;
 let identity = null, socket = null, heartbeat = null, reconnect = null, busy = false;
 let roster = [], cloudItems = [], received = [], directBytes = 0;
 const sessions = new Map();
+const imageCache = new Map();
+const IMAGE_CACHE_LIMIT = 64 * 1024 * 1024;
 try { identity = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { /* private browsing */ }
 if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embed');
 
@@ -27,6 +29,7 @@ async function api(path, options = {}) {
 }
 function post(path, value) { return api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(value)}); }
 function logout() {
+  clearImages(new Set());
   identity = null; remember(); clearTimeout(reconnect); clearInterval(heartbeat);
   if (socket) { socket.onclose = null; socket.close(); socket = null; }
   for (const session of sessions.values()) session.close();
@@ -191,7 +194,7 @@ function receiveChannel(session, channel) {
         }
         if (!received.some((item) => item.id === meta.id)) {
           received.unshift({...meta, direct:true, sender:session.peer, recipient:identity.id, created:Date.now()/1000,
-                            url:blob ? URL.createObjectURL(blob) : null});
+                            blob, url:blob ? URL.createObjectURL(blob) : null});
           directBytes += meta.size;
         }
         renderItems(); progress(100, `已直连接收 ${meta.name}，请及时保存`);
@@ -283,6 +286,7 @@ async function send(file = null) {
 function renderItems() {
   const list = $('items'); list.replaceChildren();
   const all = [...received, ...cloudItems].sort((a,b) => b.created-a.created);
+  clearImages(new Set(all.map((item) => item.id)));
   if (!all.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = '还没有共享内容'; list.append(empty); }
   for (const item of all) {
     const card = document.createElement('article'); card.className = 'item';
@@ -290,20 +294,21 @@ function renderItems() {
     const meta = document.createElement('div'); meta.className = 'sub';
     meta.textContent = `${deviceName(item.sender)} → ${deviceName(item.recipient)} · ${size(item.size)} · ${item.direct ? '直连，刷新后不保留' : '云端，24h 自动删除'}`;
     card.append(title, meta);
+    if (imageType(item)) { card.classList.add('image-item'); addImagePreview(card, item); card.append(title, meta); }
     if (item.kind === 'text') { const preview = document.createElement('div'); preview.className = 'preview'; preview.textContent = item.text; card.append(preview); }
     const actions = document.createElement('div'); actions.className = 'actions';
     const save = document.createElement(item.direct && item.url ? 'a' : 'button');
-    save.textContent = item.kind === 'text' ? '复制' : '保存文件';
+    save.textContent = item.kind === 'text' ? '复制' : imageType(item) ? '保存图片' : '保存文件';
     if (item.direct && item.url) { save.href = item.url; save.download = item.name; }
     else save.onclick = async () => {
       try {
         if (item.kind === 'text') { await navigator.clipboard.writeText(item.text); message('已复制'); }
         else {
           save.disabled = true; save.textContent = '下载中…';
-          const response = await fetch(`/api/items/${item.id}/file`, {headers:{Authorization:`Bearer ${identity.token}`}});
-          if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.detail || '下载失败'); }
-          const blob = await response.blob(); const url = URL.createObjectURL(blob);
-          const link = document.createElement('a'); link.href = url; link.download = item.name; link.textContent = '下载完成，点击保存';
+          const cached = imageCache.get(item.id);
+          const blob = cached && !cached.error ? (await cached.promise).blob : await fileBlob(item);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a'); link.href = url; link.download = item.name; link.textContent = imageType(item) ? '保存图片' : '下载完成，点击保存';
           // Keep an explicit user-gesture download link for Safari and embedded pages.
           save.replaceWith(link); link.click(); setTimeout(() => URL.revokeObjectURL(url), 300000);
         }
@@ -317,8 +322,85 @@ function renderItems() {
         else { await api(`/api/items/${item.id}`, {method:'DELETE'}); await refresh(); }
       } catch (error) { message(error.message); }
     };
-    actions.append(save,remove); card.append(actions); list.append(card);
+    actions.append(save);
+    if (imageType(item)) {
+      const copy = document.createElement('button'); copy.textContent = '复制图片';
+      copy.onclick = async () => {
+        try { copy.disabled = true; await copyImage(item); message('已复制图片，可粘贴到聊天或文档中（动图复制为静态图片）'); }
+        catch (error) { message(`未能复制图片：${error.message}。可使用「保存图片」。`); }
+        finally { copy.disabled = false; }
+      };
+      actions.append(copy);
+    }
+    if (imageType(item)) { remove.className = 'image-remove danger'; remove.setAttribute('aria-label', `移除 ${item.name}`); card.prepend(remove); }
+    else actions.append(remove);
+    card.append(actions); list.append(card);
   }
+}
+function imageType(item) {
+  if (item.kind !== 'file') return '';
+  const ext = item.name.split('.').pop().toLowerCase();
+  return ({png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', webp:'image/webp', gif:'image/gif', avif:'image/avif', bmp:'image/bmp'})[ext] || '';
+}
+async function fileBlob(item) {
+  if (item.direct) return item.blob;
+  const response = await fetch(`/api/items/${item.id}/file`, {headers:{Authorization:`Bearer ${identity.token}`}});
+  if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.detail || '下载失败'); }
+  return response.blob();
+}
+function clearImages(keep) {
+  for (const [id, entry] of imageCache) if (!keep.has(id)) {
+    imageCache.delete(id);
+    entry.promise.then((value) => URL.revokeObjectURL(value.url), () => {});
+  }
+}
+function loadImage(item) {
+  if (imageCache.has(item.id)) return imageCache.get(item.id).promise;
+  const used = [...imageCache.values()].reduce((sum, entry) => sum + entry.size, 0);
+  if (used + item.size > IMAGE_CACHE_LIMIT) return Promise.reject(new Error('图片预览内存限额已满，请保存原文件或刷新页面后重试'));
+  const entry = {size:item.size, error:false};
+  entry.promise = fileBlob(item).then((blob) => {
+    // Never embed server URLs with credentials; only render authenticated raster blobs.
+    blob = blob.slice(0, blob.size, imageType(item));
+    return {blob, url:URL.createObjectURL(blob)};
+  }).catch((error) => { entry.error = true; entry.size = 0; throw error; });
+  imageCache.set(item.id, entry);
+  return entry.promise;
+}
+function addImagePreview(card, item) {
+  const box = document.createElement('div'); box.className = 'image-preview';
+  const load = document.createElement('button'); load.className = 'pill';
+  load.textContent = '加载图片预览（下载原图，消耗流量）'; box.append(load); card.append(box);
+  const display = async () => {
+    try {
+      load.disabled = true;
+      const {url} = await loadImage(item);
+      const img = document.createElement('img'); img.alt = item.name; img.loading = 'lazy';
+      img.onerror = () => { box.textContent = '此图片无法预览，请保存原文件查看'; };
+      img.src = url; box.replaceChildren(img);
+    } catch (error) { load.textContent = error.message; load.disabled = false; }
+  };
+  load.onclick = () => {
+    if (imageCache.get(item.id)?.error) clearImages(new Set([...imageCache.keys()].filter((id) => id !== item.id)));
+    display();
+  };
+  // Auto-preview small images only; the cache prevents repeat downloads on roster refresh.
+  const used = [...imageCache.values()].reduce((sum, entry) => sum + entry.size, 0);
+  if (imageCache.has(item.id) || (item.size <= 8 * 1024 * 1024 && used + item.size <= IMAGE_CACHE_LIMIT)) display();
+}
+async function imagePng(item) {
+  const {url} = await loadImage(item);
+  const img = new Image(); img.src = url; await img.decode();
+  if (img.naturalWidth * img.naturalHeight > 32 * 1024 * 1024) throw new Error('图片像素过大，请保存原图');
+  const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  canvas.getContext('2d').drawImage(img, 0, 0);
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('图片转换失败')), 'image/png'));
+}
+function copyImage(item) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('当前浏览器不支持复制图片');
+  // Start the write in the click handler; awaiting download first loses Safari's user gesture.
+  const png = imagePng(item); png.catch(() => {});
+  return navigator.clipboard.write([new ClipboardItem({'image/png':png})]);
 }
 $('pair').onclick = async () => {
   try { identity = await post('/api/pair', {code:$('code').value, name:$('name').value}); $('code').value = ''; remember(); showApp(); }
