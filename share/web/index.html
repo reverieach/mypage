@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>MyPage Share</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/direct-files.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -32,10 +33,12 @@
       <button id="sendText" class="primary">发送文字</button>
     </section>
     <section class="card">
-      <div class="section-title"><span>Files</span><span class="sub">最大 200 MiB</span></div>
+      <div class="section-title"><span>Files</span><span class="sub">直连 2 GiB · 云端 200 MiB</span></div>
+      <p id="lanHint" class="sub">VPN 环境建议在已更新的 MyPage 小组件内使用直连，以启用本机局域网辅助。</p>
       <label class="drop"><input id="files" type="file" multiple><strong>选择文件 / 图片</strong><span class="sub">也可以拖入文件</span></label>
       <progress id="progress" value="0" max="100" hidden></progress><div id="progressText" class="sub" aria-live="polite"></div>
-      <p class="sub">直连接收后请及时保存；云端内容 24 小时后自动删除。超过 32 MiB 的文件首版走云端，以控制手机内存占用。</p>
+      <div class="actions"><button id="resumeFile" hidden>继续上次直传</button><button id="cancelResume" hidden>取消重试</button></div>
+      <p class="sub">大文件分块落盘，需接收浏览器支持本地存储且空间充足；不支持时直连限 32 MiB。断线自动重连，可在两端页面保持打开时续传（空闲 10 分钟过期），刷新/关闭页面不保留续传。超过 200 MiB 不会自动转云端。直连接收后请及时保存，云内容 24 小时过期。</p>
     </section>
     <section class="card"><div class="section-title"><span>Recent</span><span class="sub">仅自己收发的内容</span></div><div id="items" class="list"></div></section>
     <footer class="sub">主页组件打开时可直连；关闭、休眠或浏览器暂停时改为云暂存。<br>HTTPS 不等于端到端加密：云端文件以原文件暂存，请勿传敏感凭据。<button id="forget" class="pill">取消此设备配对</button></footer>

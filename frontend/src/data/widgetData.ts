@@ -161,6 +161,7 @@ export type LanShareItem = {
 
 export type LanShareStatusData = {
   enabled: boolean
+  stunUrls?: string[]
   port: number
   pin?: string | null
   localUrl: string

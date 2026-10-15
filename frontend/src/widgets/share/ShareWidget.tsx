@@ -286,6 +286,23 @@ function ShareQrDialog({ url, pin }: { url: string; pin?: string | null }) {
 
 export function ShareWidget({ config }: { config: DataWidgetConfig }) {
   const [tab, setTab] = useState<'cloud' | 'lan'>('cloud')
+  const query = useAgentWidget<LanShareStatusData>(config)
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const stunUrls = query.data?.data?.stunUrls
+
+  function sendLanHints() {
+    frameRef.current?.contentWindow?.postMessage({ type: 'mypage-lan-stun', urls: stunUrls ?? [] }, 'https://share.reverieach.com')
+  }
+
+  useEffect(() => {
+    const send = () => frameRef.current?.contentWindow?.postMessage({ type: 'mypage-lan-stun', urls: stunUrls ?? [] }, 'https://share.reverieach.com')
+    const ready = (event: MessageEvent) => {
+      if (event.source === frameRef.current?.contentWindow && event.origin === 'https://share.reverieach.com' && event.data?.type === 'mypage-share-ready') send()
+    }
+    send()
+    window.addEventListener('message', ready)
+    return () => window.removeEventListener('message', ready)
+  }, [stunUrls])
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -296,6 +313,8 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
       </div>
       {/* Keep the transport frame mounted when switching tabs so it can still receive. */}
       <iframe
+        ref={frameRef}
+        onLoad={sendLanHints}
         src="https://share.reverieach.com/?embed=1"
         title="MyPage 跨设备传输"
         allow="clipboard-write"

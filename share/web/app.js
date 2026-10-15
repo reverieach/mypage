@@ -1,12 +1,32 @@
 /* Same client on phones and in MyPage. File bytes never enter the signaling socket. */
 const $ = (id) => document.getElementById(id);
 const KEY = 'mypage-share-device-v1';
-const DIRECT_LIMIT = 32 * 1024 * 1024;
+const DIRECT_LIMIT = DirectFiles.limit;
 let identity = null, socket = null, heartbeat = null, reconnect = null, busy = false;
 let roster = [], cloudItems = [], received = [], directBytes = 0;
 const sessions = new Map();
 const imageCache = new Map();
 const IMAGE_CACHE_LIMIT = 64 * 1024 * 1024;
+let pendingFile = null;
+let lanStunUrls = [];
+const directFiles = new DirectFiles({hash, progress, complete(meta, peer, blob) {
+  if (!identity || received.some(item => item.id === meta.id)) return;
+  received.unshift({...meta, direct:true, sender:peer, recipient:identity.id, created:Date.now()/1000, blob, url:URL.createObjectURL(blob), resumable:true});
+  renderItems(); progress(100, `已直连接收 ${meta.name}，请保存到文件夹`);
+}});
+directFiles.cleanupOldFiles();
+window.addEventListener('message', event => {
+  if (event.source !== window.parent || window.parent === window || event.data?.type !== 'mypage-lan-stun') return;
+  if (!/^chrome-extension:\/\/[a-p]{32}$/.test(event.origin) && !['http://127.0.0.1:3217','http://localhost:5173','http://127.0.0.1:5173'].includes(event.origin)) return;
+  lanStunUrls = (Array.isArray(event.data.urls) ? event.data.urls : []).filter(url => {
+    const match = /^stun:(\d+\.\d+\.\d+\.\d+):3220$/.exec(url);
+    if (!match) return false;
+    const ip = match[1].split('.').map(Number);
+    return ip.every(n=>n>=0 && n<=255) && (ip[0] === 10 || (ip[0] === 172 && ip[1]>=16 && ip[1]<=31) || (ip[0] === 192 && ip[1] === 168));
+  }).slice(0,4);
+  $('lanHint').textContent = lanStunUrls.length ? '局域网辅助已连接 · 仅探测地址，不中转文件' : '本机局域网辅助未运行，VPN 环境下直连可能失败';
+});
+if (window.parent && window.parent !== window) window.parent.postMessage({type:'mypage-share-ready'}, '*');
 try { identity = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { /* private browsing */ }
 if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embed');
 
@@ -30,6 +50,9 @@ async function api(path, options = {}) {
 function post(path, value) { return api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(value)}); }
 function logout() {
   clearImages(new Set());
+  for (const item of received) if (item.url) URL.revokeObjectURL(item.url);
+  for (const id of directFiles.entries.keys()) directFiles.remove(id).catch(()=>{});
+  received = []; cloudItems = []; directBytes = 0; pendingFile = null; $('resumeFile').hidden = true; $('cancelResume').hidden = true;
   identity = null; remember(); clearTimeout(reconnect); clearInterval(heartbeat);
   if (socket) { socket.onclose = null; socket.close(); socket = null; }
   for (const session of sessions.values()) session.close();
@@ -99,8 +122,8 @@ function gathering(pc) {
 }
 function makeSession(id, peer) {
   if (sessions.size >= 4) throw new Error('直连会话过多');
-  // Host candidates only: no TURN server and therefore no hidden relay charge.
-  const pc = new RTCPeerConnection({iceServers:[]});
+  // Optional LAN-only STUN discovers the physical address behind VPN routing. Never TURN.
+  const pc = new RTCPeerConnection({iceServers:lanStunUrls.map(urls=>({urls}))});
   const session = {pc, peer, id, channel:null, closed:false, close(error = new Error('直连断开，请重新发送（不会自动重传到云端）')) {
     if (session.closed) return;
     session.closed = true;
@@ -177,8 +200,9 @@ function receiveChannel(session, channel) {
       }
       if (event.data.length > 65536) return fail();
       const value = JSON.parse(event.data);
+      if (!meta && value.type === 'begin' && value.version === 2 && value.kind === 'file') { directFiles.receive(session, channel, event); return; }
       if (value.type === 'begin') {
-        if (meta || !['file','text'].includes(value.kind) || !Number.isInteger(value.size) || value.size < 0 || value.size > DIRECT_LIMIT || String(value.name).length > 180) return fail();
+        if (meta || !['file','text'].includes(value.kind) || !Number.isInteger(value.size) || value.size < 0 || value.size > 32 * 1024 * 1024 || String(value.name).length > 180) return fail();
         if (value.kind === 'text' && new TextEncoder().encode(value.text || '').length > 16384) return fail();
         if (directBytes + value.size > 64 * 1024 * 1024 || received.length >= 30) {
           channel.send(JSON.stringify({error:'请接收端先移除已保存的直连内容'})); session.close(); return;
@@ -204,6 +228,7 @@ function receiveChannel(session, channel) {
   };
 }
 async function sendDirect(session, item, file) {
+  if (file) return sendResumableFile(session, item, file);
   const channel = session.channel;
   let acceptedResolve, completeResolve, rejectTransfer;
   const accepted = new Promise((resolve, reject) => { acceptedResolve = resolve; rejectTransfer = reject; });
@@ -218,23 +243,31 @@ async function sendDirect(session, item, file) {
   channel.onclose = () => { rejectTransfer(new Error('直连中断')); session.cancel?.(new Error('直连中断，请重新发送')); };
   const deadline = setTimeout(() => { rejectTransfer(new Error('接收超时')); session.cancel?.(new Error('接收超时')); }, 120000);
   try {
-    const buffer = file ? await file.arrayBuffer() : null;
-    channel.send(JSON.stringify({...item, type:'begin', digest:buffer ? await hash(buffer) : ''}));
+    channel.send(JSON.stringify({...item, type:'begin', digest:''}));
     await accepted;
-    if (buffer) {
-      for (let offset = 0; offset < buffer.byteLength; offset += 16384) {
-        while (channel.bufferedAmount > 256 * 1024) {
-          if (channel.readyState !== 'open') throw new Error('直连中断');
-          await new Promise((resolve) => setTimeout(resolve, 15));
-        }
-        if (channel.readyState !== 'open') throw new Error('直连中断');
-        channel.send(buffer.slice(offset, offset + 16384));
-        progress(Math.min(99, (offset + 16384) / Math.max(buffer.byteLength,1) * 100), `直传 ${file.name}`);
-      }
-    }
     channel.send(JSON.stringify({type:'end'})); await completed;
     progress(100, '对方已确认接收 · 文件没有上传云端');
   } finally { clearTimeout(deadline); session.cancel = null; session.close(); }
+}
+async function sendResumableFile(session, item, file) {
+  pendingFile = {item, file}; $('resumeFile').hidden = true; $('cancelResume').hidden = true;
+  try {
+    item.fingerprint ||= await directFiles.fingerprint(file);
+    for (let attempt=0; attempt<3; attempt++) {
+      try {
+        if (!session) session = await openDirect(item.recipient);
+        await directFiles.send(session, item, file);
+        pendingFile = null; return;
+      } catch (error) {
+        session?.close(); session = null;
+        if (error.fatal || attempt === 2) throw error;
+        progress(0, `直连中断，正在第 ${attempt+1} 次重连；从已确认分块继续，不上传云端`);
+        await new Promise(resolve=>setTimeout(resolve, 1000*(attempt+1)));
+      }
+    }
+  } finally {
+    session?.close(); $('resumeFile').hidden = !pendingFile; $('cancelResume').hidden = !pendingFile;
+  }
 }
 function cloudUpload(id, file) {
   return new Promise((resolve, reject) => {
@@ -254,9 +287,11 @@ async function send(file = null) {
   const recipient = $('target').value, text = $('text').value.trim();
   if (!recipient) return message('请先添加并选择接收设备');
   if (!file && !text) return;
-  if (file && file.size > 200 * 1024 * 1024) throw new Error('文件不能超过 200 MiB');
+  if (file && pendingFile) throw new Error('请先继续或取消上次直传');
+  if (file && file.size > DIRECT_LIMIT) throw new Error('直连文件不能超过 2 GiB');
   if (!file && new TextEncoder().encode(text).length > 16384) throw new Error('文字不能超过 16 KiB');
   const mode = $('mode').value;
+  if (file && mode === 'cloud' && file.size > 200 * 1024 * 1024) throw new Error('云端仍限 200 MiB，大文件请选择直连');
   busy = true; $('sendText').disabled = true; $('files').disabled = true;
   const item = {id:crypto.randomUUID(), recipient, kind:file ? 'file' : 'text', name:file ? file.name.slice(0,180) : text.split('\n')[0].slice(0,80), text:file ? '' : text, size:file ? file.size : new TextEncoder().encode(text).length};
   try {
@@ -266,12 +301,13 @@ async function send(file = null) {
       $('channel').textContent = '尝试直连…';
       try { session = await openDirect(recipient); }
       catch (error) { if (mode === 'direct') throw error; message(`直连暂不可用，改为云端暂存。${error.message}`); }
-    } else if (mode === 'direct') throw new Error('直连单文件上限 32 MiB，请选择云端');
+    } else if (mode === 'direct') throw new Error('直连单文件上限 2 GiB');
     if (session) {
       $('channel').textContent = '设备直连 · 不上传云端';
       // Once bytes start flowing, never silently switch to cloud and create duplicates.
       await sendDirect(session, item, file);
     } else {
+      if (item.size > 200 * 1024 * 1024) throw new Error('直连未建立：大于 200 MiB 的文件不会转到云端，请保持两端在线并检查局域网');
       $('channel').textContent = '云端暂存 · 24 小时有效';
       const record = await post('/api/items', item);
       try { if (file && !record.ready) await cloudUpload(item.id, file); }
@@ -318,7 +354,7 @@ function renderItems() {
     remove.onclick = async () => {
       if (!confirm(item.direct ? '从此页移除？请确认已经保存。' : '删除云端内容？另一台设备将无法再领取。')) return;
       try {
-        if (item.direct) { if (item.url) URL.revokeObjectURL(item.url); directBytes -= item.size; received = received.filter((entry) => entry !== item); renderItems(); }
+        if (item.direct) { if (item.url) URL.revokeObjectURL(item.url); if (item.resumable) await directFiles.remove(item.id); else directBytes -= item.size; received = received.filter((entry) => entry !== item); renderItems(); }
         else { await api(`/api/items/${item.id}`, {method:'DELETE'}); await refresh(); }
       } catch (error) { message(error.message); }
     };
@@ -413,12 +449,21 @@ $('invite').onclick = async () => {
 $('forget').onclick = async () => { if (confirm('取消当前设备的配对？')) { try { await api('/api/device', {method:'DELETE'}); logout(); } catch (error) { message(error.message); } } };
 $('refresh').onclick = () => { refresh().catch((error) => message(error.message)); if (!socket || socket.readyState > 1) { clearTimeout(reconnect); connect(); } };
 $('sendText').onclick = () => send().catch((error) => message(error.message));
+$('resumeFile').onclick = async () => {
+  if (!pendingFile || busy) return;
+  busy = true; $('sendText').disabled = true; $('files').disabled = true;
+  try { await sendResumableFile(null, pendingFile.item, pendingFile.file); }
+  catch (error) { message(`续传未完成：${error.message}。两端保持页面打开，10 分钟内可再次续传。`); }
+  finally { busy = false; $('sendText').disabled = false; $('files').disabled = false; }
+};
+$('cancelResume').onclick = () => { if (!busy) { pendingFile = null; $('resumeFile').hidden = true; $('cancelResume').hidden = true; message('已取消重试；接收端未完成暂存将在空闲 10 分钟后清理'); } };
 async function sendFiles(files) { for (const file of files) { try { await send(file); } catch (error) { message(error.message); break; } } }
 $('files').onchange = async (event) => { await sendFiles(Array.from(event.target.files)); event.target.value = ''; };
 document.querySelector('.drop').ondragover = (event) => event.preventDefault();
 document.querySelector('.drop').ondrop = (event) => { event.preventDefault(); if (!busy) sendFiles(Array.from(event.dataTransfer.files)); };
 setInterval(() => { if (identity && !busy) refresh().catch(() => {}); }, 15000);
-window.addEventListener('beforeunload', (event) => { if (busy || received.some((item) => item.kind === 'file')) { event.preventDefault(); event.returnValue = ''; } });
+setInterval(() => directFiles.expire().catch(()=>{}), 60000);
+window.addEventListener('beforeunload', (event) => { if (busy || pendingFile || directFiles.entries.size || received.some((item) => item.kind === 'file')) { event.preventDefault(); event.returnValue = ''; } });
 if (!window.isSecureContext) {
   $('pair').disabled = true;
   message('请使用 HTTPS 地址。证书尚未启用时，不要输入配对码或传输文件。');

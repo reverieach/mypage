@@ -158,6 +158,11 @@ def stylesheet():
     return FileResponse(ROOT / "web" / "style.css", media_type="text/css")
 
 
+@app.get("/direct-files.js")
+def direct_files_javascript():
+    return FileResponse(ROOT / "web" / "direct-files.js", media_type="text/javascript")
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "service": "mypage-share", "version": 1}

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from pathlib import Path
 from typing import Any
 
 from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
+from app.services import lan_stun
 
 from app.services.lan_share import (
     add_text,
@@ -19,7 +22,24 @@ from app.services.lan_share import (
     validate_token,
 )
 
-app = FastAPI(title="MyPage LAN Share")
+@contextlib.asynccontextmanager
+async def lifespan(_app):
+    await lan_stun.refresh_bindings()
+    task = asyncio.create_task(lan_stun.maintain_bindings())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="MyPage LAN Share", lifespan=lifespan)
+
+
+@app.get("/api/share/stun")
+def api_stun():
+    return {"urls": lan_stun.urls()}
 
 
 def _token_from_header(value: str | None) -> str | None:

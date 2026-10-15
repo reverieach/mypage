@@ -23,6 +23,7 @@ function client(name, overrides = {}) {
     ...overrides,
   });
   context.window = {isSecureContext:true, addEventListener(){}};
+  vm.runInContext(readFileSync(new URL('./web/direct-files.js', import.meta.url), 'utf8'), context);
   vm.runInContext(readFileSync(new URL('./web/app.js', import.meta.url), 'utf8'), context);
   vm.runInContext(`identity = {id:${JSON.stringify(name)}, token:'test'};`, context);
   return context;
@@ -39,9 +40,10 @@ test('direct text and chunked file are acknowledged only after complete receive'
     vm.runInContext('receiveChannel(session, channel)', b);
     a.session = {channel:ca, close(){}};
     const bytes = new Uint8Array(200000).map((_, i) => i % 251);
-    a.file = fileMode ? {name:'test.bin', arrayBuffer:async()=>bytes.buffer} : null;
+    a.file = fileMode ? Object.assign(new Blob([bytes]), {name:'test.bin'}) : null;
     a.item = {id:webcrypto.randomUUID(), kind:fileMode?'file':'text', name:'test', text:'hello', size:fileMode?bytes.length:5};
     await vm.runInContext('sendDirect(session,item,file)', a);
+    cb.onclose?.();
   }
   assert.equal(vm.runInContext('received.length', b), 2);
   assert.equal(vm.runInContext('received[0].size', b), 200000);
@@ -170,4 +172,52 @@ test('copy image writes a promised PNG during the click gesture and reports unsu
   assert.equal((await written[0].data['image/png']).type,'image/png');
   const unsupported = client('A');
   assert.throws(()=>vm.runInContext('copyImage({})',unsupported),/不支持复制图片/);
+});
+
+test('large files never fall back to cloud if direct handshake fails', async () => {
+  const a = client('A');
+  a.file = {name:'large.bin', size:1024**3};
+  vm.runInContext("$('target').value='B'; $('mode').value='auto'; cloudCalls=0; post=async()=>{cloudCalls++;}; openDirect=async()=>{throw new Error('offline');};",a);
+  await assert.rejects(vm.runInContext('send(file)',a), /不会转到云端/);
+  assert.equal(vm.runInContext('cloudCalls',a),0);
+});
+
+test('resumable receiver validates chunks and resumes only the same sender and file', async () => {
+  const a = client('A');
+  a.meta = {id:webcrypto.randomUUID(),name:'part.bin',size:256*1024+5,fingerprint:'a'.repeat(64)};
+  const entry = await vm.runInContext("directFiles.open(meta,'B')",a);
+  a.entry = entry; a.bytes = new Uint8Array(256*1024).fill(42).buffer;
+  const digest = await vm.runInContext('hash(bytes)',a); a.digest = digest;
+  await vm.runInContext('directFiles.append(entry,0,bytes,digest)',a);
+  assert.equal(entry.offset,256*1024);
+  assert.equal((await vm.runInContext("directFiles.open(meta,'B')",a)).offset,256*1024);
+  await assert.rejects(vm.runInContext("directFiles.open(meta,'C')",a),/不匹配/);
+  await assert.rejects(vm.runInContext('directFiles.append(entry,0,bytes,digest)',a),/顺序/);
+  await assert.rejects(vm.runInContext('directFiles.finish(entry)',a),/未接收完整/);
+  a.tail = new Uint8Array([1,2,3,4,5]).buffer;
+  await assert.rejects(vm.runInContext("directFiles.append(entry,entry.offset,tail,'bad')",a),/校验/);
+  a.tailDigest = await vm.runInContext('hash(tail)',a);
+  await vm.runInContext('directFiles.append(entry,entry.offset,tail,tailDigest)',a);
+  const blob = await vm.runInContext('directFiles.finish(entry)',a);
+  assert.equal(blob.size,256*1024+5);
+  assert.deepEqual(new Uint8Array(await blob.slice(-5).arrayBuffer()),new Uint8Array([1,2,3,4,5]));
+});
+
+test('large receiver uses disk writer; unsupported or insufficient storage refuses safely', async () => {
+  const writes = [], data = new Map();
+  const writer = {write:async value=>writes.push(value),close:async()=>{},abort:async()=>{}};
+  const dir = {getFileHandle:async name=>{data.set(name,true);return {createWritable:async()=>writer,getFile:async()=>new Blob()};},removeEntry:async name=>data.delete(name)};
+  const a = client('A',{navigator:{storage:{estimate:async()=>({quota:10*1024**3,usage:0}),getDirectory:async()=>({getDirectoryHandle:async()=>dir})}}});
+  a.meta={id:webcrypto.randomUUID(),name:'2GB.bin',size:2*1024**3,fingerprint:'b'.repeat(64)};
+  const entry = await vm.runInContext("directFiles.open(meta,'B')",a);
+  assert.equal(entry.disk,true); assert.equal(entry.chunks.length,0);
+  a.entry=entry; a.bytes=new Uint8Array(256*1024).buffer; a.digest=await vm.runInContext('hash(bytes)',a);
+  await vm.runInContext('directFiles.append(entry,0,bytes,digest)',a);
+  assert.equal(writes[0].data.byteLength,256*1024); assert.equal(entry.chunks.length,0);
+  await vm.runInContext('directFiles.remove(meta.id)',a); assert.equal(data.size,0);
+  const b=client('B'); b.meta=a.meta;
+  await assert.rejects(vm.runInContext("directFiles.open(meta,'A')",b),/不支持大文件落盘/);
+  a.navigator.storage.estimate=async()=>({quota:1024,usage:1024});
+  await assert.rejects(vm.runInContext("directFiles.open(meta,'B')",a),/空间不足/);
+  assert.equal(vm.runInContext('directFiles.entries.size',a),0);
 });

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import ipaddress
+import json
 import mimetypes
 import os
 import re
@@ -598,11 +600,28 @@ def _candidate_ips_from_ipconfig() -> list[str]:
     return values
 
 
-def _candidate_ips() -> list[str]:
+def _candidate_ips(*, physical_only: bool = False) -> list[str]:
     values: list[str] = []
+
+    if sys.platform == 'darwin':
+        try:
+            output = subprocess.run(['/sbin/ifconfig'], capture_output=True, text=True, timeout=3, check=False).stdout
+            physical = False
+            for line in output.splitlines():
+                if line and not line[0].isspace():
+                    physical = not _adapter_looks_virtual(line.split(':')[0]) and 'UP,' in line
+                elif physical and line.strip().startswith('inet '):
+                    ip = line.split()[1]
+                    if _is_shareable_lan_ip(ip):
+                        _append_unique(values, ip)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
     for ip in _candidate_ips_from_ipconfig():
         _append_unique(values, ip)
+
+    if physical_only:
+        return values
 
     default_ip = _default_lan_ip()
     if default_ip and _is_shareable_lan_ip(default_ip):
@@ -634,10 +653,22 @@ def share_status(include_pin: bool = True) -> dict[str, Any]:
     ips = _candidate_ips()
     urls = [f"http://{ip}:{SHARE_PORT}/share" for ip in ips]
     local_url = f"http://127.0.0.1:{SHARE_PORT}/share"
+    stun_urls = []
+    connection = http.client.HTTPConnection('127.0.0.1', SHARE_PORT, timeout=0.5)
+    try:
+        connection.request('GET', '/api/share/stun')
+        response = connection.getresponse()
+        if response.status == 200:
+            stun_urls = json.loads(response.read(4096)).get('urls', [])
+    except (OSError, ValueError, http.client.HTTPException):
+        pass
+    finally:
+        connection.close()
 
     return {
         "enabled": _port_is_listening(),
         "port": SHARE_PORT,
+        "stunUrls": stun_urls,
         "pin": pin,
         "localUrl": local_url,
         "urls": urls,
