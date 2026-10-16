@@ -206,6 +206,8 @@ export type MailSummaryData = {
     label: string
     email: string
     lastSyncAt?: string | null
+    lastAttemptAt?: string | null
+    lastError?: string | null
   }>
   items: Array<{
     id: string

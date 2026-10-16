@@ -88,7 +88,7 @@ def frontend_favicon():
 
 
 async def mail_sync_loop() -> None:
-    interval = int(os.getenv("MAIL_SYNC_INTERVAL_SECONDS", "900"))
+    interval = int(os.getenv("MAIL_SYNC_INTERVAL_SECONDS", "60"))
 
     if interval <= 0:
         return
@@ -96,7 +96,11 @@ async def mail_sync_loop() -> None:
     await asyncio.sleep(3)
 
     while True:
-        await asyncio.to_thread(refresh_mail)
+        try:
+            await asyncio.to_thread(refresh_mail)
+        except Exception as exc:
+            # A transient failure must not permanently kill background receiving.
+            print(f"[warn] mail sync failed: {type(exc).__name__}", file=sys.stderr)
         await asyncio.sleep(interval)
 
 

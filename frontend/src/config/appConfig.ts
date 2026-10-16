@@ -100,7 +100,7 @@ export const appConfig: AppConfig = {
       title: 'Notifications',
       layout: { x: 0, y: 6, w: 4, h: 3, minW: 3, minH: 2 },
       endpoint: '/api/notifications',
-      refreshIntervalMs: 2 * 60 * 1000,
+      refreshIntervalMs: 15 * 1000,
     },
     {
       id: 'homework-due',
@@ -130,7 +130,7 @@ export const appConfig: AppConfig = {
       title: 'Mail',
       layout: { x: 3, y: 9, w: 4, h: 3, minW: 3, minH: 2 },
       endpoint: '/api/mail/summary',
-      refreshIntervalMs: 15 * 60 * 1000,
+      refreshIntervalMs: 15 * 1000,
     },
     {
       id: 'important-info',

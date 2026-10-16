@@ -1,4 +1,6 @@
 import { Bell, GitPullRequest, Mail, MessageCircle, School, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 
 import type { DataWidgetConfig } from '../../config/types'
 import { postAgentEnvelope } from '../../data/apiClient'
@@ -18,12 +20,34 @@ const sourceIcons = {
 
 export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
   const query = useAgentWidget<NotificationCenterData>(config)
+  const queryClient = useQueryClient()
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+  const actionInFlight = useRef(false)
+  useEffect(() => {
+    if (!error) return
+    const timer = window.setTimeout(() => setError(''), 4500)
+    return () => window.clearTimeout(timer)
+  }, [error])
 
   async function markMailRead(messageId: string) {
-    await postAgentEnvelope(
-      `/api/mail/messages/${encodeURIComponent(messageId)}/read`,
-    )
-    await query.refetch()
+    if (actionInFlight.current) return
+    actionInFlight.current = true
+    setPending(true)
+    try {
+      const result = await postAgentEnvelope(`/api/mail/messages/${encodeURIComponent(messageId)}/read`)
+      if (result.error) throw new Error(result.error)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mail-messages'] }),
+        queryClient.invalidateQueries({ predicate: ({ queryKey }) =>
+          queryKey[0] === 'agent-widget' && ['/api/mail/summary', '/api/notifications'].includes(String(queryKey[2])) }),
+      ])
+    } catch {
+      setError('未能标为已读，请重试')
+    } finally {
+      actionInFlight.current = false
+      setPending(false)
+    }
   }
 
   if (query.isLoading) {
@@ -46,6 +70,7 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
           {query.data.data.enabledSources.join(' · ')}
         </span>
       </div>
+      {error ? <p role="status" className="text-xs text-amber-100/80">{error}</p> : null}
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         {items.map((item) => {
           const Icon = sourceIcons[item.source]
@@ -74,9 +99,10 @@ export function NotificationsWidget({ config }: { config: DataWidgetConfig }) {
               {item.source === 'mail' ? (
                 <button
                   type="button"
-                  aria-label="Mark mail notification as read"
-                  title="Mark as read"
-                  className="-mr-1 self-start rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78"
+                  aria-label="标为已读"
+                  title="标为已读"
+                  disabled={pending}
+                  className="-mr-1 self-start rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78 disabled:opacity-30"
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()

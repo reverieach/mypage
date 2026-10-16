@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ExternalLink, Mail, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { RefreshStatusButton } from '../../components/ui/refresh-status-button'
 import { useRefreshFeedback } from '../../components/ui/useRefreshFeedback'
@@ -9,7 +9,7 @@ import type { DataWidgetConfig } from '../../config/types'
 import { fetchAgentEnvelope, postAgentEnvelope } from '../../data/apiClient'
 import { type MailSummaryData, useAgentWidget } from '../../data/widgetData'
 import type { WidgetRenderMode } from '../registry'
-import { WidgetError, WidgetLoading, WidgetMeta } from '../WidgetStatus'
+import { WidgetError, WidgetLoading } from '../WidgetStatus'
 
 type MailView = 'priority' | 'unread'
 
@@ -53,6 +53,15 @@ export function MailDigestWidget({
   mode?: WidgetRenderMode
 }) {
   const [view, setView] = useState<MailView>('priority')
+  const [feedback, setFeedback] = useState('')
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const actionInFlight = useRef(false)
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!feedback) return
+    const timer = window.setTimeout(() => setFeedback(''), 4500)
+    return () => window.clearTimeout(timer)
+  }, [feedback])
   const summaryQuery = useAgentWidget<MailSummaryData>(config)
   const detailQuery = useQuery({
     queryKey: ['mail-messages', view],
@@ -62,24 +71,47 @@ export function MailDigestWidget({
       ),
     enabled: mode === 'detail',
     staleTime: 30_000,
+    refetchInterval: 15_000,
   })
   const refresh = useRefreshFeedback()
   const query = mode === 'detail' ? detailQuery : summaryQuery
 
+  async function refreshViews() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['mail-messages'] }),
+      queryClient.invalidateQueries({ predicate: ({ queryKey }) =>
+        queryKey[0] === 'agent-widget' && ['/api/mail/summary', '/api/notifications'].includes(String(queryKey[2])) }),
+    ])
+  }
+
   async function refreshMail() {
     void refresh.runRefresh(async () => {
-      const envelope = await postAgentEnvelope('/api/mail/refresh')
-      if (envelope.error) throw new Error(envelope.error)
-
-      await summaryQuery.refetch()
-      if (mode === 'detail') await detailQuery.refetch()
+      try {
+        const envelope = await postAgentEnvelope<{ busy?: boolean }>('/api/mail/refresh')
+        await refreshViews()
+        if (envelope.error) throw new Error(envelope.error)
+        if (envelope.data.busy) setFeedback('正在收信，稍后自动更新')
+      } catch (error) {
+        setFeedback('收信失败，已保留最近邮件')
+        throw error
+      }
     })
   }
 
   async function markMailRead(id: string) {
-    await postAgentEnvelope(`/api/mail/messages/${encodeURIComponent(id)}/read`)
-    await summaryQuery.refetch()
-    if (mode === 'detail') await detailQuery.refetch()
+    if (actionInFlight.current) return
+    actionInFlight.current = true
+    setPendingId(id)
+    try {
+      const result = await postAgentEnvelope(`/api/mail/messages/${encodeURIComponent(id)}/read`)
+      if (result.error) throw new Error(result.error)
+      await refreshViews()
+    } catch {
+      setFeedback('未能标为已读，请重试')
+    } finally {
+      actionInFlight.current = false
+      setPendingId(null)
+    }
   }
 
   if (query.isLoading) return <WidgetLoading />
@@ -93,6 +125,7 @@ export function MailDigestWidget({
     unread: data.items.length + (data.hiddenCount ?? 0),
     filtered: data.hiddenCount ?? 0,
   }
+  const lastSync = data.accounts.map(account => account.lastSyncAt).filter((value): value is string => Boolean(value)).sort()[0]
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-hidden">
@@ -102,18 +135,20 @@ export function MailDigestWidget({
           <span className="truncate">
             {data.configured
               ? mode === 'detail'
-                ? `${counts.unread} unread · ${counts.filtered} filtered`
-                : `${data.importantCount} important${counts.filtered ? ` · ${counts.filtered} filtered` : ''}`
-              : 'Mail not configured'}
+                ? `${counts.unread} 封未读 · ${counts.filtered} 封已筛选`
+                : `${counts.priority} 封待阅${data.importantCount ? ` · ${data.importantCount} 封重要` : ''}`
+              : '邮箱待连接'}
           </span>
         </div>
         <RefreshStatusButton
           disabled={refresh.isRefreshing}
-          label="Refresh mail"
+          label="立即收信"
           onClick={refreshMail}
           status={refresh.status}
         />
       </div>
+
+      {feedback ? <p role="status" className="text-xs text-amber-100/80">{feedback}</p> : null}
 
       {mode === 'detail' ? (
         <div className="grid grid-cols-2 rounded-lg bg-white/8 p-1">
@@ -136,6 +171,12 @@ export function MailDigestWidget({
           ))}
         </div>
       ) : null}
+
+      {mode === 'detail' ? <div className="space-y-1 text-xs text-white/50">
+        {data.accounts.map(account => <p key={account.id} title={account.lastError ?? undefined}>
+          {account.label} · {account.lastError ? '同步失败' : account.lastSyncAt ? `同步于 ${formatMailTime(account.lastSyncAt)}` : '等待首次同步'}
+        </p>)}
+      </div> : null}
 
       <div className="scrollbar-none min-h-0 flex-1 space-y-2 overflow-y-auto">
         <AnimatePresence mode="popLayout" initial={false}>
@@ -165,9 +206,10 @@ export function MailDigestWidget({
                       ) : null}
                       <button
                         type="button"
-                        aria-label="Mark mail as read"
-                        title="Mark as read"
-                        className="-mr-1 rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78"
+                        aria-label="标为已读"
+                        title={pendingId === item.id ? '正在处理…' : '标为已读'}
+                        disabled={pendingId !== null}
+                        className="-mr-1 rounded-full p-1 text-white/34 transition hover:bg-white/12 hover:text-white/78 disabled:opacity-30"
                         onClick={(event) => {
                           event.preventDefault()
                           event.stopPropagation()
@@ -179,7 +221,7 @@ export function MailDigestWidget({
                     </div>
                   </div>
                   <p className="mt-1 truncate text-xs text-white/48">
-                    {item.accountLabel} · {item.accountEmail}
+                    {item.sender} · {item.accountLabel}{mode === 'detail' ? ` · ${item.accountEmail}` : ''}
                   </p>
                   <p className={`mt-1 text-xs leading-5 text-white/62 ${mode === 'detail' ? 'line-clamp-3' : 'line-clamp-2'}`}>
                     {item.summary}
@@ -187,7 +229,7 @@ export function MailDigestWidget({
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className={`rounded-full px-2 py-0.5 text-[11px] ${importanceClass(item.importance)}`}>
-                        {item.importance}
+                        {{ critical: '紧急', important: '重要', normal: '普通', low: '低优先级' }[item.importance]}
                       </span>
                       {hiddenReason ? (
                         <span className="truncate rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-white/46">
@@ -215,13 +257,16 @@ export function MailDigestWidget({
                   ? view === 'priority'
                     ? '没有需要关注的未读邮件。'
                     : '没有未读邮件。'
-                  : 'Add IMAP accounts to the local Agent config.'}
+                  : '连接邮箱后，邮件会自动显示在这里。'}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <WidgetMeta envelope={query.data} />
+      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-white/42">
+        <span>{lastSync ? `同步于 ${formatMailTime(lastSync)}` : '尚未同步'}</span>
+        {data.error ? <span title={data.error} className="text-amber-100/80">同步异常</span> : null}
+      </div>
     </div>
   )
 }

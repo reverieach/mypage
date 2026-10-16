@@ -387,13 +387,15 @@ def notifications() -> dict[str, Any]:
 
 @router.get("/mail/summary")
 def mail_summary_endpoint() -> dict[str, Any]:
-    return envelope(mail_summary(), stale=False)
+    data = mail_summary()
+    return envelope(data, stale=bool(data.get("error")), error=data.get("error"))
 
 
 @router.get("/mail/messages")
 def mail_messages_endpoint(view: str = "priority", limit: int = 100) -> dict[str, Any]:
     try:
-        return envelope(mail_messages(view=view, limit=limit), stale=False)
+        data = mail_messages(view=view, limit=limit)
+        return envelope(data, stale=bool(data.get("error")), error=data.get("error"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
