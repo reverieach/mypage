@@ -12,7 +12,7 @@ let lanStunUrls = [];
 const directFiles = new DirectFiles({hash, progress, complete(meta, peer, blob) {
   if (!identity || received.some(item => item.id === meta.id)) return;
   received.unshift({...meta, direct:true, sender:peer, recipient:identity.id, created:Date.now()/1000, blob, url:URL.createObjectURL(blob), resumable:true});
-  renderItems(); progress(100, `已直连接收 ${meta.name}，请保存到文件夹`);
+  renderItems(); progress(100, '已收到文件，请保存');
 }});
 directFiles.cleanupOldFiles();
 window.addEventListener('message', event => {
@@ -30,10 +30,26 @@ if (window.parent && window.parent !== window) window.parent.postMessage({type:'
 try { identity = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { /* private browsing */ }
 if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embed');
 
-function message(text) { $('message').textContent = text; $('message').classList.toggle('visible', !!text); }
+let messageTimer, messageClearTimer, progressTimer, progressClearTimer;
+function message(text) {
+  clearTimeout(messageTimer); clearTimeout(messageClearTimer);
+  $('message').textContent = text; $('message').classList.toggle('visible', !!text);
+  if (text) messageTimer = setTimeout(() => {
+    $('message').classList.remove('visible');
+    messageClearTimer = setTimeout(() => { $('message').textContent = ''; }, 250);
+  }, 4000);
+}
 function size(n) { return n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MiB` : `${Math.ceil(n / 1024)} KiB`; }
 function deviceName(id) { return roster.find((d) => d.id === id)?.name || '设备'; }
-function progress(value, text) { $('progress').hidden = false; $('progress').value = value; $('progressText').textContent = text; }
+function progress(value, text, finished = value >= 100) {
+  clearTimeout(progressTimer); clearTimeout(progressClearTimer);
+  $('transferStatus').hidden = false; $('transferStatus').classList.add('visible');
+  $('progress').value = value; $('progressText').textContent = text;
+  if (finished) progressTimer = setTimeout(() => {
+    $('transferStatus').classList.remove('visible');
+    progressClearTimer = setTimeout(() => { $('transferStatus').hidden = true; $('progressText').textContent = ''; }, 250);
+  }, 4000);
+}
 function remember() {
   try { if (identity) localStorage.setItem(KEY, JSON.stringify(identity)); else localStorage.removeItem(KEY); }
   catch { message('浏览器不允许保存配对信息；本次仍可使用，下次可能需要重新配对。'); }
@@ -98,7 +114,7 @@ async function refresh() {
   $('target').replaceChildren();
   for (const device of roster.filter((d) => d.id !== result.self)) {
     const option = document.createElement('option'); option.value = device.id;
-    option.textContent = `${device.name} · ${device.online ? '页面在线' : '离线，可云暂存'}`;
+    option.textContent = `${device.name} · ${device.online ? '在线' : '离线'}`;
     $('target').append(option);
   }
   if (roster.some((d) => d.id === selected && d.id !== result.self)) $('target').value = selected;
@@ -221,7 +237,7 @@ function receiveChannel(session, channel) {
                             blob, url:blob ? URL.createObjectURL(blob) : null});
           directBytes += meta.size;
         }
-        renderItems(); progress(100, `已直连接收 ${meta.name}，请及时保存`);
+        renderItems(); progress(100, meta.kind === 'text' ? '已收到文字' : '已收到文件，请保存');
         channel.send(JSON.stringify({type:'complete'}));
       }
     } catch { fail(); }
@@ -246,7 +262,7 @@ async function sendDirect(session, item, file) {
     channel.send(JSON.stringify({...item, type:'begin', digest:''}));
     await accepted;
     channel.send(JSON.stringify({type:'end'})); await completed;
-    progress(100, '对方已确认接收 · 文件没有上传云端');
+    progress(100, '已直传');
   } finally { clearTimeout(deadline); session.cancel = null; session.close(); }
 }
 async function sendResumableFile(session, item, file) {
@@ -273,7 +289,7 @@ function cloudUpload(id, file) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest(); xhr.open('PUT', `/api/items/${id}/file`);
     xhr.setRequestHeader('Authorization', `Bearer ${identity.token}`); xhr.timeout = 300000;
-    xhr.upload.onprogress = (event) => { if (event.lengthComputable) progress(event.loaded/event.total*100, `云端上传 ${file.name}`); };
+    xhr.upload.onprogress = (event) => { if (event.lengthComputable) progress(event.loaded/event.total*100, `上传 ${file.name}`, false); };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
       else { let detail = '上传失败'; try { detail = JSON.parse(xhr.responseText).detail || detail; } catch { /* proxy response */ } reject(new Error(detail)); }
@@ -300,7 +316,7 @@ async function send(file = null) {
     if (mode !== 'cloud' && item.size <= DIRECT_LIMIT) {
       $('channel').textContent = '尝试直连…';
       try { session = await openDirect(recipient); }
-      catch (error) { if (mode === 'direct') throw error; message(`直连暂不可用，改为云端暂存。${error.message}`); }
+      catch (error) { if (mode === 'direct') throw error; message('改为云端暂存'); }
     } else if (mode === 'direct') throw new Error('直连单文件上限 2 GiB');
     if (session) {
       $('channel').textContent = '设备直连 · 不上传云端';
@@ -312,11 +328,11 @@ async function send(file = null) {
       const record = await post('/api/items', item);
       try { if (file && !record.ready) await cloudUpload(item.id, file); }
       catch (error) { await api(`/api/items/${item.id}`, {method:'DELETE'}).catch(() => {}); throw error; }
-      progress(100,'已存云端，接收端打开页面后可领取'); await refresh();
+      progress(100,'已发送到云端'); await refresh();
     }
     if (!file) $('text').value = '';
   } catch (error) {
-    $('channel').textContent = '传输未完成'; progress($('progress').value, error.message); throw error;
+    $('channel').textContent = `传输未完成：${error.message}`; progress($('progress').value, '传输未完成，请重试', true); throw error;
   } finally { busy = false; $('sendText').disabled = false; $('files').disabled = false; }
 }
 function renderItems() {
@@ -362,7 +378,7 @@ function renderItems() {
     if (imageType(item)) {
       const copy = document.createElement('button'); copy.textContent = '复制图片';
       copy.onclick = async () => {
-        try { copy.disabled = true; await copyImage(item); message('已复制图片，可粘贴到聊天或文档中（动图复制为静态图片）'); }
+        try { copy.disabled = true; await copyImage(item); message('已复制图片'); }
         catch (error) { message(`未能复制图片：${error.message}。可使用「保存图片」。`); }
         finally { copy.disabled = false; }
       };

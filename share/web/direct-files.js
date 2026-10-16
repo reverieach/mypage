@@ -158,7 +158,7 @@ class DirectFiles {
       }
       const completed = wait('complete'); channel.send(JSON.stringify({type:'end'}));
       if ((await completed).offset !== file.size) throw Object.assign(new Error('文件完成确认不一致'),{fatal:true});
-      this.progress(100,'对方已完整接收并逐块校验 · 文件未上传云端');
+      this.progress(100,'已直传');
     } finally { clearTimeout(timer); session.cancel = null; session.close(); }
   }
 }

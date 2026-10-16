@@ -6,9 +6,39 @@ import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
 
 function element() {
-  return {value:'', options:[], children:[], classList:{add(){}, toggle(){}}, append(...nodes){this.children.push(...nodes);}, prepend(...nodes){this.children.unshift(...nodes);}, setAttribute(){}, replaceChildren(...nodes){this.children=nodes;},
+  const classes = new Set();
+  return {value:'', options:[], children:[], classList:{add(name){classes.add(name);}, remove(name){classes.delete(name);}, contains(name){return classes.has(name);}, toggle(name,on){if(on)classes.add(name);else classes.delete(name);}}, append(...nodes){this.children.push(...nodes);}, prepend(...nodes){this.children.unshift(...nodes);}, setAttribute(){}, replaceChildren(...nodes){this.children=nodes;},
     addEventListener(){}, replaceWith(){}, click(){}, add(option){this.options.push(option);}};
 }
+
+test('toast fades after four seconds and a newer message cancels stale cleanup', () => {
+  const timers = new Map(); let next = 0;
+  const a = client('A', {setTimeout(fn, ms){timers.set(++next,{fn,ms});return next;}, clearTimeout(id){timers.delete(id);}});
+  vm.runInContext("message('已复制')",a);
+  assert.equal(vm.runInContext("$('message').classList.contains('visible')",a),true);
+  const fade = [...timers.values()].find(t=>t.ms===4000); fade.fn();
+  assert.equal(vm.runInContext("$('message').classList.contains('visible')",a),false);
+  vm.runInContext("message('新提示')",a);
+  assert.equal([...timers.values()].some(t=>t.ms===250),false);
+  assert.equal(vm.runInContext("$('message').textContent",a),'新提示');
+  vm.runInContext("message('')",a);
+  assert.equal(vm.runInContext("$('message').classList.contains('visible')",a),false);
+});
+
+test('completed progress collapses, ongoing upload and retry cancel its cleanup', () => {
+  const timers = new Map(); let next = 0;
+  const a = client('A',{setTimeout(fn,ms){timers.set(++next,{fn,ms});return next;},clearTimeout(id){timers.delete(id);}});
+  vm.runInContext("progress(100,'完成')",a);
+  [...timers.values()].find(t=>t.ms===4000).fn();
+  assert.equal(vm.runInContext("$('transferStatus').classList.contains('visible')",a),false);
+  vm.runInContext("progress(100,'等待服务器确认',false)",a);
+  assert.equal(timers.size,0);
+  assert.equal(vm.runInContext("$('transferStatus').hidden",a),false);
+  vm.runInContext("progress(100,'完成')",a);
+  [...timers.values()].find(t=>t.ms===4000).fn();
+  [...timers.values()].find(t=>t.ms===250).fn();
+  assert.equal(vm.runInContext("$('transferStatus').hidden",a),true);
+});
 function client(name, overrides = {}) {
   const elements = new Map();
   const get = (id) => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
