@@ -37,6 +37,7 @@ body.embed #message{background:#263344eb;backdrop-filter:blur(12px)}
 html:has(body.embed)::-webkit-scrollbar,body.embed ::-webkit-scrollbar{display:none;width:0;height:0}
 body.embed,body.embed *{scrollbar-width:none}
 /* Everyday controls stay above the fold; diagnostics live in the overflow menu. */
+.device-card{position:relative;z-index:2}
 .transfer-controls{display:grid;grid-template-columns:minmax(0,1fr) 96px 32px;gap:8px;align-items:center;position:relative}
 .transfer-controls select{margin:0;min-width:0;font-size:13px;padding:8px;white-space:nowrap;text-overflow:ellipsis}
 .device-menu{margin:0!important}.device-menu>summary{display:grid;place-items:center;list-style:none;cursor:pointer;height:32px;border-radius:12px;background:#ffffff14;font-size:20px;line-height:1}

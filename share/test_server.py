@@ -125,7 +125,9 @@ class RelayTests(unittest.TestCase):
     def test_page_security_and_local_api_absent(self):
         response = self.client.get("/")
         self.assertIn("frame-ancestors", response.headers["content-security-policy"])
-        self.assertIn("Quick Text", response.text)
+        self.assertIn('aria-label="文字或链接"', response.text)
+        self.assertIn('aria-label="发送给"', response.text)
+        self.assertLess(response.text.index('class="drop"'), response.text.index('class="card text-compose"'))
         for path in ("/api/config/load", "/api/mail/summary", "/docs"):
             self.assertEqual(self.client.get(path).status_code, 404)
 
