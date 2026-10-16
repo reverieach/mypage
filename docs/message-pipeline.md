@@ -96,6 +96,8 @@ Expected JSON fields:
 
 If DeepSeek is unavailable, the Agent uses a keyword fallback.
 
+Once an API key is configured, unread messages previously handled by local fallback become eligible for AI analysis after 15 minutes from their last analysis. Failed/invalid AI responses remain fallback and use that same retry interval; successful AI results are cached and do not repeat on every refresh. IMAP fetches the body again only for eligible fallback retries. Summaries and action items are requested in concise Chinese, with an 800-token response cap and thinking disabled. Invalid/empty classification JSON is not labeled as an AI success.
+
 DeepSeek output is not applied directly. A versioned local policy runs afterwards and protects billing or pricing changes, invoices, payment failures, security alerts, service interruption, discontinuation, and material terms changes. Original sender, subject, read state, and received time remain mailbox facts and are never rewritten by the model.
 
 ## Filtering Rules
@@ -208,6 +210,8 @@ After generating a QQ IMAP authorization code yourself on the official site, run
 ```
 
 The helper prompts for the numeric QQ email address and hides credential input, checks login using a read-only inbox selection, then updates the existing local Agent configuration. It preserves other accounts and uses `marketingAction: keep`. The credential is stored in a mode-600 local dotenv file, passed to Uvicorn with `--env-file`; this is restricted local plaintext, not encrypted Keychain storage. Keep it and its private backups out of Git and configuration exports. The helper restarts only the main Agent, not VPN or LAN Share. It does not create provider authorization codes or configure Gmail/Outlook.
+
+With explicit consent to send email metadata and truncated text to DeepSeek, the Mac can then run `scripts/configure-deepseek-macos.py` using the same runtime Python. This prompts invisibly for the API key, verifies it at `https://api.deepseek.com/models`, chooses an available Flash model (or the legacy chat model), and saves it in the existing private env file. It does not copy any credential into source control. A successful model-list request verifies authentication, not successful mail analysis or available inference balance; check stored analysis model and a real refresh afterwards.
 
 ## Cloud collection trade-off
 

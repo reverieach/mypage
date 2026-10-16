@@ -3,6 +3,9 @@ from dataclasses import replace
 from pathlib import Path
 import tempfile
 import threading
+import json
+import os
+from datetime import datetime, timedelta
 import unittest
 from unittest.mock import patch
 
@@ -202,6 +205,36 @@ class MailSyncTests(unittest.TestCase):
         self.assertEqual(result["counts"]["unread"], 1)
         self.assertEqual(result["accounts"][0]["lastSyncAt"], last_success)
         self.assertTrue(result["error"])
+
+    @patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"})
+    def test_ai_retry_only_for_old_local_fallback(self):
+        old = (datetime.now(mail.LOCAL_TZ) - timedelta(minutes=16)).isoformat()
+        recent = datetime.now(mail.LOCAL_TZ).isoformat()
+        self.assertTrue(mail._needs_ai_retry({"model": "local-fallback", "analyzedAt": old}))
+        self.assertFalse(mail._needs_ai_retry({"model": "local-fallback", "analyzedAt": recent}))
+        self.assertFalse(mail._needs_ai_retry({"model": "deepseek-flash", "analyzedAt": old}))
+
+    @patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"})
+    @patch.object(mail, "analyze_message")
+    @patch.object(mail, "collect_imap_account")
+    def test_existing_fallback_is_upgraded_once_after_key_setup(self, collect, analyze):
+        item = message("Project update")
+        self.save(item)
+        with mail._connect() as connection:
+            connection.execute("UPDATE message_analysis SET analyzed_at = ?", ((datetime.now(mail.LOCAL_TZ) - timedelta(minutes=16)).isoformat(),))
+        collect.return_value = [item]
+        analyze.return_value = {"summary": "项目进展", "importance": "normal", "model": "deepseek-flash"}
+        mail.refresh_mail()
+        mail.refresh_mail()
+        analyze.assert_called_once()
+        self.assertEqual(mail.mail_summary()["items"][0]["summary"], "项目进展")
+
+    @patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"})
+    @patch.object(mail.urllib.request, "urlopen")
+    def test_invalid_ai_json_is_not_recorded_as_ai_success(self, urlopen):
+        urlopen.return_value.__enter__.return_value.read.return_value = json.dumps({"choices": [{"message": {"content": "{invalid json}"}}]}).encode()
+        result = mail.analyze_message(message("Hello"))
+        self.assertNotIn("model", result)
 
 
 if __name__ == "__main__":
