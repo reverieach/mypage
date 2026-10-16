@@ -325,7 +325,7 @@ function renderItems() {
   clearImages(new Set(all.map((item) => item.id)));
   if (!all.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = '还没有共享内容'; list.append(empty); }
   for (const item of all) {
-    const card = document.createElement('article'); card.className = 'item';
+    const card = document.createElement('article'); card.className = item.kind === 'text' ? 'item text-item' : 'item';
     const title = document.createElement('div'); title.className = 'item-title'; title.textContent = item.name;
     const meta = document.createElement('div'); meta.className = 'sub';
     meta.textContent = `${deviceName(item.sender)} → ${deviceName(item.recipient)} · ${size(item.size)} · ${item.direct ? '直连，刷新后不保留' : '云端，24h 自动删除'}`;

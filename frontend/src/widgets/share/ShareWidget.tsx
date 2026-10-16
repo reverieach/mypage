@@ -319,7 +319,7 @@ export function ShareWidget({ config }: { config: DataWidgetConfig }) {
         title="MyPage 跨设备传输"
         allow="clipboard-write"
         referrerPolicy="no-referrer"
-        className={cn('min-h-0 w-full flex-1 rounded-2xl border-0', tab !== 'cloud' && 'hidden')}
+        className={cn('min-h-0 w-full flex-1 border-0 bg-transparent', tab !== 'cloud' && 'hidden')}
       />
       {tab === 'lan' && <div className="min-h-0 flex-1"><LanSharePanel config={config} /></div>}
     </div>
